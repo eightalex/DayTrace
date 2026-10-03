@@ -16,8 +16,35 @@ enum SelfTest {
             "development classification"
         )
         check(
+            ActivityClassifier.classify(appName: "Obsidian", title: "Daily note", isIdle: false) == .documents,
+            "Obsidian is not confused with Dia browser"
+        )
+        check(
             ActivityClassifier.classify(appName: "Telegram", title: "Family", isIdle: true) == .away,
             "idle classification"
+        )
+        check(
+            ContextTitleCleaner.clean(
+                appName: "Claude",
+                bundleIdentifier: "com.anthropic.claudefordesktop",
+                title: "Azure MCP setup - Claude Code"
+            ) == "Azure MCP setup",
+            "Claude task title cleanup"
+        )
+        check(
+            ContextTitleCleaner.clean(
+                appName: "Telegram",
+                bundleIdentifier: "ru.keepcoder.Telegram",
+                title: "Telegram @ Oleksandr"
+            ) == "Oleksandr",
+            "Telegram chat title cleanup"
+        )
+        check(
+            ContextTitleCleaner.prefersFocusedWebTitle(
+                appName: "Google Chrome",
+                bundleIdentifier: "com.google.Chrome"
+            ),
+            "browser web title preference"
         )
         print("All DayTrace self-tests passed")
     }

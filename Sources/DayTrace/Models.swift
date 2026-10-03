@@ -73,7 +73,7 @@ enum ActivityClassifier {
         if containsAny(app, ["telegram", "slack", "messages", "discord", "whatsapp", "signal", "mail", "outlook", "zoom", "microsoft teams"]) {
             return .communication
         }
-        if containsAny(app, ["safari", "chrome", "firefox", "arc", "brave", "edge", "orion", "dia"]) {
+        if containsAny(app, ["safari", "chrome", "firefox", "arc", "brave", "edge", "orion"]) || app == "dia" {
             return .web
         }
         if containsAny(app, ["pages", "numbers", "keynote", "word", "excel", "powerpoint", "notes", "obsidian", "notion", "preview", "pdf"]) {
@@ -87,6 +87,50 @@ enum ActivityClassifier {
 
     private static func containsAny(_ value: String, _ needles: [String]) -> Bool {
         needles.contains { value.contains($0) }
+    }
+}
+
+enum ContextTitleCleaner {
+    static func prefersFocusedWebTitle(appName: String, bundleIdentifier: String?) -> Bool {
+        let identity = "\(appName) \(bundleIdentifier ?? "")".lowercased()
+        return [
+            "claude", "anthropic", "chatgpt", "openai", "codex",
+            "safari", "chrome", "chromium", "firefox", "brave",
+            "edge", "arc", "orion", "dia"
+        ].contains { identity.contains($0) }
+    }
+
+    static func clean(appName: String, bundleIdentifier: String?, title: String) -> String {
+        var result = title
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let identity = "\(appName) \(bundleIdentifier ?? "")".lowercased()
+
+        if identity.contains("telegram") {
+            for prefix in ["Telegram @ ", "Telegram — ", "Telegram – ", "Telegram - "] where result.hasPrefix(prefix) {
+                result.removeFirst(prefix.count)
+                break
+            }
+        }
+
+        if identity.contains("claude") || identity.contains("anthropic") {
+            result = removingSuffixes([" - Claude Code", " — Claude Code", " – Claude Code", " - Claude", " — Claude", " – Claude"], from: result)
+        }
+
+        if identity.contains("chatgpt") || identity.contains("openai") || identity.contains("codex") {
+            result = removingSuffixes([" - ChatGPT", " — ChatGPT", " – ChatGPT", " - Codex", " — Codex", " – Codex"], from: result)
+        }
+
+        let genericTitles = [appName.lowercased(), "telegram", "claude", "chatgpt", "codex"]
+        return genericTitles.contains(result.lowercased()) ? "" : result
+    }
+
+    private static func removingSuffixes(_ suffixes: [String], from value: String) -> String {
+        for suffix in suffixes where value.hasSuffix(suffix) {
+            return String(value.dropLast(suffix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return value
     }
 }
 

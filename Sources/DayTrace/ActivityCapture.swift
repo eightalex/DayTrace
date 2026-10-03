@@ -15,12 +15,16 @@ enum ActivityCapture {
     static func snapshot() -> ActivitySnapshot? {
         guard let app = NSWorkspace.shared.frontmostApplication else { return nil }
         let idle = idleSeconds() >= idleThreshold
-        let title = idle ? "" : focusedWindowTitle(processIdentifier: app.processIdentifier)
+        let title = idle ? "" : activityTitle(
+            processIdentifier: app.processIdentifier,
+            appName: app.localizedName ?? "Невідома програма",
+            bundleIdentifier: app.bundleIdentifier
+        )
 
         return ActivitySnapshot(
             appName: app.localizedName ?? "Невідома програма",
             bundleIdentifier: app.bundleIdentifier,
-            windowTitle: normalized(title),
+            windowTitle: title,
             isIdle: idle
         )
     }
@@ -30,8 +34,35 @@ enum ActivityCapture {
         return AXIsProcessTrustedWithOptions(options)
     }
 
-    private static func focusedWindowTitle(processIdentifier: pid_t) -> String {
+    private static func activityTitle(
+        processIdentifier: pid_t,
+        appName: String,
+        bundleIdentifier: String?
+    ) -> String {
         let application = AXUIElementCreateApplication(processIdentifier)
+        let focusedWebTitle = ContextTitleCleaner.prefersFocusedWebTitle(
+            appName: appName,
+            bundleIdentifier: bundleIdentifier
+        ) ? focusedWebAreaTitle(application: application) : ""
+
+        if !focusedWebTitle.isEmpty {
+            let cleaned = ContextTitleCleaner.clean(
+                appName: appName,
+                bundleIdentifier: bundleIdentifier,
+                title: focusedWebTitle
+            )
+            if !cleaned.isEmpty { return cleaned }
+        }
+
+        let windowTitle = focusedWindowTitle(application: application, processIdentifier: processIdentifier)
+        return ContextTitleCleaner.clean(
+            appName: appName,
+            bundleIdentifier: bundleIdentifier,
+            title: windowTitle
+        )
+    }
+
+    private static func focusedWindowTitle(application: AXUIElement, processIdentifier: pid_t) -> String {
         var windowValue: CFTypeRef?
         let windowResult = AXUIElementCopyAttributeValue(
             application,
@@ -55,6 +86,39 @@ enum ActivityCapture {
             return title
         }
         return cgWindowTitle(processIdentifier: processIdentifier)
+    }
+
+    private static func focusedWebAreaTitle(application: AXUIElement) -> String {
+        var focusedValue: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(
+            application,
+            kAXFocusedUIElementAttribute as CFString,
+            &focusedValue
+        ) == .success, let focusedValue else { return "" }
+
+        var current = focusedValue as! AXUIElement
+        for _ in 0..<12 {
+            if stringAttribute(kAXRoleAttribute, from: current) == "AXWebArea",
+               let title = stringAttribute(kAXTitleAttribute, from: current),
+               !title.isEmpty {
+                return title
+            }
+
+            var parentValue: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(
+                current,
+                kAXParentAttribute as CFString,
+                &parentValue
+            ) == .success, let parentValue else { break }
+            current = parentValue as! AXUIElement
+        }
+        return ""
+    }
+
+    private static func stringAttribute(_ attribute: String, from element: AXUIElement) -> String? {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success else { return nil }
+        return value as? String
     }
 
     private static func cgWindowTitle(processIdentifier: pid_t) -> String {
@@ -81,9 +145,4 @@ enum ActivityCapture {
             .min() ?? 0
     }
 
-    private static func normalized(_ value: String) -> String {
-        value
-            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-    }
 }
