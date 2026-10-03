@@ -18,14 +18,13 @@ struct ContentView: View {
             if store.sessionsForSelectedDay.isEmpty {
                 emptyState
             } else {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 24) {
-                        summary
-                        categoryGrid
-                        timeline
-                    }
-                    .padding(24)
+                VStack(alignment: .leading, spacing: 18) {
+                    summary
+                    categoryGrid
+                    timelineHeader
+                    timelineList
                 }
+                .padding(24)
             }
         }
         .frame(minWidth: 760, minHeight: 560)
@@ -156,16 +155,18 @@ struct ContentView: View {
         }
     }
 
-    private var timeline: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Хронологія")
-                    .font(.title3.bold())
-                Spacer()
-                Button("Показати дані у Finder") { store.revealDataFolder() }
-                    .buttonStyle(.link)
-            }
+    private var timelineHeader: some View {
+        HStack {
+            Text("Хронологія")
+                .font(.title3.bold())
+            Spacer()
+            Button("Показати дані у Finder") { store.revealDataFolder() }
+                .buttonStyle(.link)
+        }
+    }
 
+    private var timelineList: some View {
+        ScrollView {
             LazyVStack(spacing: 0) {
                 ForEach(store.sessionsForSelectedDay) { session in
                     SessionRow(session: session)
@@ -174,8 +175,9 @@ struct ContentView: View {
                     }
                 }
             }
-            .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 14))
         }
+        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 14))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
     }
 
     private var dateTitle: String {
