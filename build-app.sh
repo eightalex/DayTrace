@@ -18,6 +18,7 @@ LEGACY_ZIP="$SCRIPT_DIR/DayTrace-macOS.zip"
 mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 cp ".build/release/DayTrace" "$MACOS_DIR/DayTrace"
 cp "Resources/Info.plist" "$CONTENTS_DIR/Info.plist"
+cp "Resources/DayTrace.icns" "$RESOURCES_DIR/DayTrace.icns"
 
 codesign --force --deep --sign - "$APP_DIR"
 
