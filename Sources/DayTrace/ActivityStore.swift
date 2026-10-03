@@ -72,6 +72,10 @@ final class ActivityStore: ObservableObject {
 
     func requestAccessibility() {
         accessibilityGranted = ActivityCapture.accessibilityGranted(prompt: true)
+        if !accessibilityGranted,
+           let settingsURL = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+            NSWorkspace.shared.open(settingsURL)
+        }
     }
 
     func refreshPermission() {

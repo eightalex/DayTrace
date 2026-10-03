@@ -88,12 +88,12 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text("Дозвольте доступ до назв вікон")
                     .font(.headline)
-                Text("Без Accessibility DayTrace бачить програму, але заголовок активного вікна може бути порожнім.")
+                Text("Якщо DayTrace уже увімкнений у списку, вимкніть і знову ввімкніть перемикач для /Applications/DayTrace.app.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            Button("Надати доступ") { store.requestAccessibility() }
+            Button("Відкрити налаштування") { store.requestAccessibility() }
         }
         .padding(14)
         .background(.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))

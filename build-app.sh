@@ -20,7 +20,12 @@ cp ".build/release/DayTrace" "$MACOS_DIR/DayTrace"
 cp "Resources/Info.plist" "$CONTENTS_DIR/Info.plist"
 cp "Resources/DayTrace.icns" "$RESOURCES_DIR/DayTrace.icns"
 
-codesign --force --deep --sign - "$APP_DIR"
+codesign \
+  --force \
+  --deep \
+  --sign - \
+  --requirements '=designated => identifier "local.daytrace.app"' \
+  "$APP_DIR"
 
 pkill -x DayTrace 2>/dev/null || true
 if [ -e "$INSTALL_DIR" ]; then
