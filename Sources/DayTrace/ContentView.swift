@@ -63,6 +63,13 @@ struct ContentView: View {
 
             Divider().frame(height: 22)
 
+            Button {
+                store.toggleDockVisibility()
+            } label: {
+                Image(systemName: store.isVisibleInDock ? "dock.rectangle" : "dock.arrow.up.rectangle")
+            }
+            .help(store.isVisibleInDock ? "Приховати з Dock" : "Показати в Dock")
+
             Button(store.isTracking ? "Призупинити" : "Продовжити") {
                 store.toggleTracking()
             }
@@ -228,6 +235,9 @@ struct MenuBarView: View {
             }
             Button(store.isTracking ? "Призупинити запис" : "Продовжити запис") {
                 store.toggleTracking()
+            }
+            Button(store.isVisibleInDock ? "Приховати з Dock" : "Показати в Dock") {
+                store.toggleDockVisibility()
             }
             Divider()
             Button("Завершити") { NSApp.terminate(nil) }

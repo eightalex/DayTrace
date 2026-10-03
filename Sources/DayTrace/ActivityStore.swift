@@ -7,6 +7,7 @@ final class ActivityStore: ObservableObject {
     @Published private(set) var sessions: [ActivitySession] = []
     @Published private(set) var isTracking = true
     @Published private(set) var accessibilityGranted = false
+    @Published private(set) var isVisibleInDock = true
     @Published var selectedDate = Date()
 
     private let calendar = Calendar.autoupdatingCurrent
@@ -19,11 +20,15 @@ final class ActivityStore: ObservableObject {
     private var trackingSessions: [ActivitySession] = []
 
     init() {
+        isVisibleInDock = UserDefaults.standard.object(forKey: "showInDock") as? Bool ?? true
         accessibilityGranted = ActivityCapture.accessibilityGranted(prompt: false)
         observedDay = selectedDate
         trackingSessions = loadSessions(for: observedDay)
         sessions = trackingSessions
         startTimer()
+        DispatchQueue.main.async { [weak self] in
+            self?.applyDockVisibility(activate: false)
+        }
     }
 
     deinit {
@@ -59,6 +64,12 @@ final class ActivityStore: ObservableObject {
         }
     }
 
+    func toggleDockVisibility() {
+        isVisibleInDock.toggle()
+        UserDefaults.standard.set(isVisibleInDock, forKey: "showInDock")
+        applyDockVisibility(activate: isVisibleInDock)
+    }
+
     func requestAccessibility() {
         accessibilityGranted = ActivityCapture.accessibilityGranted(prompt: true)
     }
@@ -82,6 +93,13 @@ final class ActivityStore: ObservableObject {
     func revealDataFolder() {
         try? FileManager.default.createDirectory(at: dataDirectory, withIntermediateDirectories: true)
         NSWorkspace.shared.activateFileViewerSelecting([dataDirectory])
+    }
+
+    private func applyDockVisibility(activate: Bool) {
+        NSApp.setActivationPolicy(isVisibleInDock ? .regular : .accessory)
+        if activate {
+            NSApp.activate(ignoringOtherApps: true)
+        }
     }
 
     private func startTimer() {
