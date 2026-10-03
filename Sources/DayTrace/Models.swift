@@ -1,0 +1,102 @@
+import Foundation
+
+struct ActivitySession: Codable, Identifiable, Equatable {
+    let id: UUID
+    var appName: String
+    var bundleIdentifier: String?
+    var windowTitle: String
+    var category: ActivityCategory
+    var startedAt: Date
+    var endedAt: Date
+    var isIdle: Bool
+
+    var duration: TimeInterval {
+        max(0, endedAt.timeIntervalSince(startedAt))
+    }
+
+    var displayTitle: String {
+        if isIdle { return "Відійшов від комп’ютера" }
+        return windowTitle.isEmpty ? appName : windowTitle
+    }
+}
+
+enum ActivityCategory: String, Codable, CaseIterable, Identifiable {
+    case development = "Розробка"
+    case communication = "Спілкування"
+    case ai = "AI-інструменти"
+    case video = "Відео"
+    case web = "Веб"
+    case documents = "Документи"
+    case system = "Система"
+    case away = "Перерва"
+    case other = "Інше"
+
+    var id: String { rawValue }
+
+    var symbol: String {
+        switch self {
+        case .development: return "hammer"
+        case .communication: return "bubble.left.and.bubble.right"
+        case .ai: return "sparkles"
+        case .video: return "play.rectangle"
+        case .web: return "globe"
+        case .documents: return "doc.text"
+        case .system: return "gearshape"
+        case .away: return "cup.and.saucer"
+        case .other: return "square.grid.2x2"
+        }
+    }
+}
+
+struct CategoryTotal: Identifiable {
+    let category: ActivityCategory
+    let duration: TimeInterval
+    var id: ActivityCategory { category }
+}
+
+enum ActivityClassifier {
+    static func classify(appName: String, title: String, isIdle: Bool) -> ActivityCategory {
+        if isIdle { return .away }
+
+        let app = appName.lowercased()
+        let context = "\(appName) \(title)".lowercased()
+
+        if containsAny(context, ["claude", "chatgpt", "gemini", "perplexity", "ollama"]) || app == "codex" {
+            return .ai
+        }
+        if containsAny(context, ["youtube", "vimeo", "netflix", "megogo", "twitch"]) {
+            return .video
+        }
+        if containsAny(app, ["xcode", "visual studio code", "cursor", "zed", "sublime", "intellij", "webstorm", "pycharm", "terminal", "iterm", "warp", "github desktop", "docker"]) {
+            return .development
+        }
+        if containsAny(app, ["telegram", "slack", "messages", "discord", "whatsapp", "signal", "mail", "outlook", "zoom", "microsoft teams"]) {
+            return .communication
+        }
+        if containsAny(app, ["safari", "chrome", "firefox", "arc", "brave", "edge", "orion", "dia"]) {
+            return .web
+        }
+        if containsAny(app, ["pages", "numbers", "keynote", "word", "excel", "powerpoint", "notes", "obsidian", "notion", "preview", "pdf"]) {
+            return .documents
+        }
+        if containsAny(app, ["finder", "system settings", "activity monitor", "console", "daytrace"]) {
+            return .system
+        }
+        return .other
+    }
+
+    private static func containsAny(_ value: String, _ needles: [String]) -> Bool {
+        needles.contains { value.contains($0) }
+    }
+}
+
+enum DurationText {
+    static func compact(_ interval: TimeInterval) -> String {
+        let seconds = max(0, Int(interval.rounded()))
+        let hours = seconds / 3600
+        let minutes = (seconds % 3600) / 60
+        if hours > 0 { return "\(hours) год \(minutes) хв" }
+        if minutes > 0 { return "\(minutes) хв" }
+        return "< 1 хв"
+    }
+}
