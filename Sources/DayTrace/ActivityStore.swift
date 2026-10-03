@@ -139,7 +139,9 @@ final class ActivityStore: ObservableObject {
 
         let category = ActivityClassifier.classify(
             appName: snapshot.appName,
+            bundleIdentifier: snapshot.bundleIdentifier,
             title: snapshot.windowTitle,
+            isDevelopmentContext: snapshot.isDevelopmentContext,
             isIdle: snapshot.isIdle
         )
 
@@ -147,6 +149,7 @@ final class ActivityStore: ObservableObject {
         if var current = trackingSessions.last,
            current.appName == snapshot.appName,
            current.windowTitle == snapshot.windowTitle,
+           current.category == category,
            current.isIdle == snapshot.isIdle {
             current.endedAt = now
             current.category = category

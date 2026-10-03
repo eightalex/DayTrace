@@ -6,7 +6,13 @@ struct ActivitySnapshot: Equatable {
     let appName: String
     let bundleIdentifier: String?
     let windowTitle: String
+    let isDevelopmentContext: Bool
     let isIdle: Bool
+}
+
+private struct CapturedTitle {
+    let display: String
+    let raw: String
 }
 
 enum ActivityCapture {
@@ -14,17 +20,23 @@ enum ActivityCapture {
 
     static func snapshot() -> ActivitySnapshot? {
         guard let app = NSWorkspace.shared.frontmostApplication else { return nil }
+        let appName = app.localizedName ?? "Невідома програма"
         let idle = idleSeconds() >= idleThreshold
-        let title = idle ? "" : activityTitle(
+        let title = idle ? CapturedTitle(display: "", raw: "") : activityTitle(
             processIdentifier: app.processIdentifier,
-            appName: app.localizedName ?? "Невідома програма",
+            appName: appName,
             bundleIdentifier: app.bundleIdentifier
         )
 
         return ActivitySnapshot(
-            appName: app.localizedName ?? "Невідома програма",
+            appName: appName,
             bundleIdentifier: app.bundleIdentifier,
-            windowTitle: title,
+            windowTitle: title.display,
+            isDevelopmentContext: ContextTitleCleaner.isDevelopmentContext(
+                appName: appName,
+                bundleIdentifier: app.bundleIdentifier,
+                rawTitle: title.raw
+            ),
             isIdle: idle
         )
     }
@@ -38,7 +50,7 @@ enum ActivityCapture {
         processIdentifier: pid_t,
         appName: String,
         bundleIdentifier: String?
-    ) -> String {
+    ) -> CapturedTitle {
         let application = AXUIElementCreateApplication(processIdentifier)
         let focusedWebTitle = ContextTitleCleaner.prefersFocusedWebTitle(
             appName: appName,
@@ -51,14 +63,17 @@ enum ActivityCapture {
                 bundleIdentifier: bundleIdentifier,
                 title: focusedWebTitle
             )
-            if !cleaned.isEmpty { return cleaned }
+            if !cleaned.isEmpty { return CapturedTitle(display: cleaned, raw: focusedWebTitle) }
         }
 
         let windowTitle = focusedWindowTitle(application: application, processIdentifier: processIdentifier)
-        return ContextTitleCleaner.clean(
-            appName: appName,
-            bundleIdentifier: bundleIdentifier,
-            title: windowTitle
+        return CapturedTitle(
+            display: ContextTitleCleaner.clean(
+                appName: appName,
+                bundleIdentifier: bundleIdentifier,
+                title: windowTitle
+            ),
+            raw: windowTitle
         )
     }
 

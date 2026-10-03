@@ -9,7 +9,30 @@ enum SelfTest {
         )
         check(
             ActivityClassifier.classify(appName: "Claude", title: "Azure MCP setup", isIdle: false) == .ai,
-            "Claude classification"
+            "Claude chat classification"
+        )
+        check(
+            ActivityClassifier.classify(appName: "ChatGPT", title: "Vacation ideas", isIdle: false) == .ai,
+            "ChatGPT chat classification"
+        )
+        check(
+            ActivityClassifier.classify(
+                appName: "ChatGPT",
+                bundleIdentifier: "com.openai.codex",
+                title: "Implement timeline",
+                isIdle: false
+            ) == .development,
+            "Codex app classification"
+        )
+        check(
+            ActivityClassifier.classify(
+                appName: "Claude",
+                bundleIdentifier: "com.anthropic.claudefordesktop",
+                title: "Fix deploy",
+                isDevelopmentContext: true,
+                isIdle: false
+            ) == .development,
+            "Claude Code classification"
         )
         check(
             ActivityClassifier.classify(appName: "Visual Studio Code", title: "my-pet-project", isIdle: false) == .development,
@@ -30,6 +53,14 @@ enum SelfTest {
                 title: "Azure MCP setup - Claude Code"
             ) == "Azure MCP setup",
             "Claude task title cleanup"
+        )
+        check(
+            ContextTitleCleaner.isDevelopmentContext(
+                appName: "Claude",
+                bundleIdentifier: "com.anthropic.claudefordesktop",
+                rawTitle: "Azure MCP setup - Claude Code"
+            ),
+            "Claude Code context detection"
         )
         check(
             ContextTitleCleaner.clean(

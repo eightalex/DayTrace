@@ -55,13 +55,23 @@ struct CategoryTotal: Identifiable {
 }
 
 enum ActivityClassifier {
-    static func classify(appName: String, title: String, isIdle: Bool) -> ActivityCategory {
+    static func classify(
+        appName: String,
+        bundleIdentifier: String? = nil,
+        title: String,
+        isDevelopmentContext: Bool = false,
+        isIdle: Bool
+    ) -> ActivityCategory {
         if isIdle { return .away }
 
         let app = appName.lowercased()
+        let identity = "\(appName) \(bundleIdentifier ?? "")".lowercased()
         let context = "\(appName) \(title)".lowercased()
 
-        if containsAny(context, ["claude", "chatgpt", "gemini", "perplexity", "ollama"]) || app == "codex" {
+        if isDevelopmentContext || app == "codex" || identity.contains("com.openai.codex") {
+            return .development
+        }
+        if containsAny(context, ["claude", "chatgpt", "gemini", "perplexity", "ollama"]) {
             return .ai
         }
         if containsAny(context, ["youtube", "vimeo", "netflix", "megogo", "twitch"]) {
@@ -124,6 +134,19 @@ enum ContextTitleCleaner {
 
         let genericTitles = [appName.lowercased(), "telegram", "claude", "chatgpt", "codex"]
         return genericTitles.contains(result.lowercased()) ? "" : result
+    }
+
+    static func isDevelopmentContext(
+        appName: String,
+        bundleIdentifier: String?,
+        rawTitle: String
+    ) -> Bool {
+        let identity = "\(appName) \(bundleIdentifier ?? "")".lowercased()
+        if identity.contains("com.openai.codex") || appName.lowercased() == "codex" {
+            return true
+        }
+        return (identity.contains("claude") || identity.contains("anthropic"))
+            && rawTitle.lowercased().contains("claude code")
     }
 
     private static func removingSuffixes(_ suffixes: [String], from value: String) -> String {
