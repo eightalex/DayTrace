@@ -339,7 +339,8 @@ private struct CategoryManagerView: View {
                         }
                     }
                 }
-                .padding(.bottom, 4)
+                // Keep scaled drop targets inside the scroll view's clipping bounds.
+                .padding(6)
             }
         }
         .padding(24)
