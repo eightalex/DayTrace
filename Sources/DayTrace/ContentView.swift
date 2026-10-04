@@ -364,9 +364,24 @@ private struct CategoryManagerView: View {
         DisclosureGroup(isExpanded: $viewState.isShowingRecentTabs) {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
-                    TextField("Пошук вкладок", text: $viewState.recentTabSearch)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(maxWidth: 260)
+                    HStack(spacing: 6) {
+                        Image(systemName: "magnifyingglass")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        TextField("Пошук вкладок", text: $viewState.recentTabSearch)
+                            .textFieldStyle(.plain)
+                    }
+                    .padding(.horizontal, 8)
+                    .frame(width: 260, height: 26)
+                    .background(
+                        Color(nsColor: .textBackgroundColor),
+                        in: RoundedRectangle(cornerRadius: 6)
+                    )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(.secondary.opacity(0.28), lineWidth: 1)
+                    }
+                    .padding(.leading, 1)
                     Spacer()
                     if filteredRecentTabs.count > 15 {
                         Text("Показано 15 із \(filteredRecentTabs.count)")
