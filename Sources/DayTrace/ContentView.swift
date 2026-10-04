@@ -321,14 +321,14 @@ private struct CategoryManagerView: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Застосунки за категоріями")
+                    Text("Застосунки та вкладки за категоріями")
                         .font(.title3.bold())
-                    Text("Перетягування в інший блок змінює та закріплює категорію застосунку.")
+                    Text("Перетягування застосунку або вкладки змінює та закріплює її категорію.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                Text("\(store.categorizedApplications.count) застосунків")
+                Text("\(store.categorizedApplications.count) елементів")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -512,7 +512,7 @@ private struct AppRulePill: View {
     var body: some View {
         HStack(spacing: 6) {
             ApplicationIcon(bundleIdentifier: rule.bundleIdentifier)
-            Text(rule.appName)
+            Text(rule.displayName)
                 .font(.caption.weight(.medium))
                 .lineLimit(1)
         }
@@ -524,6 +524,7 @@ private struct AppRulePill: View {
                 .stroke(color.opacity(0.18), lineWidth: 1)
         }
         .contentShape(Capsule())
+        .help(rule.isContextSpecific ? "Вкладка у \(rule.appName)" : rule.appName)
     }
 }
 

@@ -66,13 +66,64 @@ struct CategoryColorValue: Codable, Equatable {
     }
 }
 
+enum ApplicationIdentity {
+    static func isBrowser(appName: String, bundleIdentifier: String?) -> Bool {
+        let app = appName.lowercased()
+        let bundle = (bundleIdentifier ?? "").lowercased()
+        let browserNames = [
+            "safari", "google chrome", "chromium", "firefox", "arc",
+            "brave browser", "microsoft edge", "orion", "dia", "opera", "vivaldi"
+        ]
+        let browserBundleFragments = [
+            "com.apple.safari", "com.google.chrome", "org.chromium", "org.mozilla.firefox",
+            "company.thebrowser", "com.brave.browser", "com.microsoft.edgemac",
+            "com.kagi.kagimacos", "com.operasoftware.opera", "com.vivaldi.vivaldi"
+        ]
+        return browserNames.contains(app)
+            || browserBundleFragments.contains { bundle.contains($0) }
+    }
+
+    static func browserTabTitle(
+        appName: String,
+        bundleIdentifier: String?,
+        windowTitle: String
+    ) -> String? {
+        guard isBrowser(appName: appName, bundleIdentifier: bundleIdentifier) else { return nil }
+        let title = windowTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        return title.isEmpty ? nil : title
+    }
+}
+
 struct AppCategoryRule: Codable, Identifiable, Hashable {
     var appName: String
     var bundleIdentifier: String?
+    var contextTitle: String?
     var category: ActivityCategory
 
+    init(
+        appName: String,
+        bundleIdentifier: String?,
+        contextTitle: String? = nil,
+        category: ActivityCategory
+    ) {
+        self.appName = appName
+        self.bundleIdentifier = bundleIdentifier
+        self.contextTitle = contextTitle
+        self.category = category
+    }
+
     var id: String {
-        Self.key(appName: appName, bundleIdentifier: bundleIdentifier)
+        let applicationKey = Self.key(appName: appName, bundleIdentifier: bundleIdentifier)
+        guard let contextTitle else { return applicationKey }
+        return "\(applicationKey)|context:\(Self.normalizedContextTitle(contextTitle))"
+    }
+
+    var displayName: String {
+        contextTitle.map(Self.canonicalContextTitle) ?? appName
+    }
+
+    var isContextSpecific: Bool {
+        contextTitle != nil
     }
 
     static func key(appName: String, bundleIdentifier: String?) -> String {
@@ -82,8 +133,28 @@ struct AppCategoryRule: Codable, Identifiable, Hashable {
         return "name:\(appName.lowercased())"
     }
 
-    func matches(appName: String, bundleIdentifier: String?) -> Bool {
-        id == Self.key(appName: appName, bundleIdentifier: bundleIdentifier)
+    static func normalizedContextTitle(_ title: String) -> String {
+        canonicalContextTitle(title).lowercased()
+    }
+
+    static func canonicalContextTitle(_ title: String) -> String {
+        title
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .replacingOccurrences(of: "^\\(\\d+\\)\\s*", with: "", options: .regularExpression)
+            .replacingOccurrences(
+                of: "\\s+[-–—]\\s+(google chrome|safari|firefox|arc|brave browser|microsoft edge|orion|dia|opera|vivaldi)(?:\\s+[-–—]\\s+.*)?$",
+                with: "",
+                options: [.regularExpression, .caseInsensitive]
+            )
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    func matches(appName: String, bundleIdentifier: String?, contextTitle: String = "") -> Bool {
+        guard Self.key(appName: self.appName, bundleIdentifier: self.bundleIdentifier)
+            == Self.key(appName: appName, bundleIdentifier: bundleIdentifier) else { return false }
+        guard let ownContextTitle = self.contextTitle else { return true }
+        return Self.normalizedContextTitle(ownContextTitle)
+            == Self.normalizedContextTitle(contextTitle)
     }
 }
 

@@ -60,18 +60,36 @@ final class ActivityStore: ObservableObject {
     var categorizedApplications: [AppCategoryRule] {
         var applications: [String: AppCategoryRule] = [:]
         for session in sessions.sorted(by: { $0.startedAt < $1.startedAt }) where !session.isIdle {
+            let browserTabTitle = ApplicationIdentity.browserTabTitle(
+                appName: session.appName,
+                bundleIdentifier: session.bundleIdentifier,
+                windowTitle: session.windowTitle
+            )
+            if ApplicationIdentity.isBrowser(
+                appName: session.appName,
+                bundleIdentifier: session.bundleIdentifier
+            ), browserTabTitle == nil {
+                continue
+            }
             let application = AppCategoryRule(
                 appName: session.appName,
                 bundleIdentifier: session.bundleIdentifier,
+                contextTitle: browserTabTitle,
                 category: session.category
             )
             applications[application.id] = application
         }
-        for rule in categoryRules {
+        for rule in categoryRules where rule.isContextSpecific
+            || !ApplicationIdentity.isBrowser(
+                appName: rule.appName,
+                bundleIdentifier: rule.bundleIdentifier
+            ) {
             applications[rule.id] = rule
         }
         return applications.values.sorted {
-            $0.appName.localizedCaseInsensitiveCompare($1.appName) == .orderedAscending
+            let nameOrder = $0.displayName.localizedCaseInsensitiveCompare($1.displayName)
+            if nameOrder != .orderedSame { return nameOrder == .orderedAscending }
+            return $0.appName.localizedCaseInsensitiveCompare($1.appName) == .orderedAscending
         }
     }
 
@@ -86,6 +104,11 @@ final class ActivityStore: ObservableObject {
             AppCategoryRule(
                 appName: session.appName,
                 bundleIdentifier: session.bundleIdentifier,
+                contextTitle: ApplicationIdentity.browserTabTitle(
+                    appName: session.appName,
+                    bundleIdentifier: session.bundleIdentifier,
+                    windowTitle: session.windowTitle
+                ),
                 category: category
             )
         )
@@ -205,6 +228,7 @@ final class ActivityStore: ObservableObject {
         let category = assignedCategory(
             appName: snapshot.appName,
             bundleIdentifier: snapshot.bundleIdentifier,
+            windowTitle: snapshot.windowTitle,
             automaticCategory: automaticCategory,
             isIdle: snapshot.isIdle
         )
@@ -262,7 +286,11 @@ final class ActivityStore: ObservableObject {
         } else {
             categoryRules.append(rule)
         }
-        categoryRules.sort { $0.appName.localizedCaseInsensitiveCompare($1.appName) == .orderedAscending }
+        categoryRules.sort {
+            let appOrder = $0.appName.localizedCaseInsensitiveCompare($1.appName)
+            if appOrder != .orderedSame { return appOrder == .orderedAscending }
+            return $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
+        }
         saveCategoryRules()
 
         apply(rule, to: &trackingSessions)
@@ -278,7 +306,8 @@ final class ActivityStore: ObservableObject {
         for index in target.indices where !target[index].isIdle
             && rule.matches(
                 appName: target[index].appName,
-                bundleIdentifier: target[index].bundleIdentifier
+                bundleIdentifier: target[index].bundleIdentifier,
+                contextTitle: target[index].windowTitle
             ) {
             target[index].category = rule.category
         }
@@ -287,13 +316,21 @@ final class ActivityStore: ObservableObject {
     private func assignedCategory(
         appName: String,
         bundleIdentifier: String?,
+        windowTitle: String,
         automaticCategory: ActivityCategory,
         isIdle: Bool
     ) -> ActivityCategory {
         guard !isIdle else { return .away }
-        return categoryRules.first {
-            $0.matches(appName: appName, bundleIdentifier: bundleIdentifier)
-        }?.category ?? automaticCategory
+        let matchingRules = categoryRules.filter {
+            $0.matches(
+                appName: appName,
+                bundleIdentifier: bundleIdentifier,
+                contextTitle: windowTitle
+            )
+        }
+        return matchingRules.first(where: { $0.isContextSpecific })?.category
+            ?? matchingRules.first(where: { !$0.isContextSpecific })?.category
+            ?? automaticCategory
     }
 
     private var dataDirectory: URL {
@@ -321,7 +358,7 @@ final class ActivityStore: ObservableObject {
         let url = fileURL(for: date)
         guard let data = try? Data(contentsOf: url),
               var result = try? JSONDecoder.dayTrace.decode([ActivitySession].self, from: data) else { return [] }
-        for rule in categoryRules {
+        for rule in categoryRules.sorted(by: { !$0.isContextSpecific && $1.isContextSpecific }) {
             apply(rule, to: &result)
         }
         return result

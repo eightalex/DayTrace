@@ -90,6 +90,53 @@ enum SelfTest {
             "category rules fall back to a normalized app name"
         )
         check(
+            ApplicationIdentity.isBrowser(
+                appName: "Google Chrome",
+                bundleIdentifier: "com.google.Chrome"
+            ),
+            "Chrome is recognized as a browser"
+        )
+        check(
+            !ApplicationIdentity.isBrowser(appName: "Obsidian", bundleIdentifier: "md.obsidian"),
+            "Obsidian is not confused with a browser"
+        )
+        let youtubeRule = AppCategoryRule(
+            appName: "Google Chrome",
+            bundleIdentifier: "com.google.Chrome",
+            contextTitle: "A useful video - YouTube",
+            category: .video
+        )
+        check(
+            youtubeRule.matches(
+                appName: "Google Chrome",
+                bundleIdentifier: "com.google.Chrome",
+                contextTitle: "(4) A useful video - YouTube"
+            ),
+            "browser tab rules ignore a leading notification count"
+        )
+        check(
+            AppCategoryRule.normalizedContextTitle(
+                "GitHub - Google Chrome – Олександр (Home)"
+            ) == AppCategoryRule.normalizedContextTitle("GitHub"),
+            "browser tab rules ignore browser and profile suffixes"
+        )
+        check(
+            !youtubeRule.matches(
+                appName: "Google Chrome",
+                bundleIdentifier: "com.google.Chrome",
+                contextTitle: "GitHub"
+            ),
+            "browser tab rules do not affect another tab"
+        )
+        let legacyRuleJSON = """
+        {"appName":"Google Chrome","bundleIdentifier":"com.google.Chrome","category":"Веб"}
+        """.data(using: .utf8)!
+        let legacyRule = try? JSONDecoder().decode(AppCategoryRule.self, from: legacyRuleJSON)
+        check(
+            legacyRule?.contextTitle == nil && legacyRule?.category == .web,
+            "existing application category rules remain decodable"
+        )
+        check(
             CategoryColorValue(red: 1.2, green: -0.1, blue: 0.5, opacity: 2)
                 == CategoryColorValue(red: 1, green: 0, blue: 0.5, opacity: 1),
             "category color components stay in the displayable range"
