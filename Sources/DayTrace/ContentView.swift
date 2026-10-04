@@ -561,6 +561,7 @@ private struct DayTimelineChart: View {
                                     ? Color.secondary
                                     : session.category.timelineColor
                             )
+                            .cornerRadius(0)
                             .opacity(markOpacity(for: session))
                             .accessibilityLabel(session.displayTitle)
                             .accessibilityValue(
