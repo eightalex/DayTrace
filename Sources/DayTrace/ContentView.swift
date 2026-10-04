@@ -266,7 +266,7 @@ private struct SessionRow: View {
                 Text(session.displayTitle)
                     .font(.headline)
                     .lineLimit(2)
-                HStack(spacing: 2) {
+                HStack(spacing: 6) {
                     Text(session.appName)
                     Text("•")
                     if session.isIdle {
@@ -371,7 +371,7 @@ private struct CategoryRuleCard: View {
                 Image(systemName: category.symbol)
                     .foregroundStyle(color)
                     .frame(width: 24, height: 24)
-                HStack(spacing: 6) {
+                HStack(spacing: 2) {
                     Text(category.rawValue)
                         .font(.headline)
                         .lineLimit(1)
