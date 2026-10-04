@@ -1,21 +1,66 @@
 {
   "fill" : {
-    "automatic-gradient" : "display-p3:0.83922,0.92549,1.00000,1.00000"
+    "linear-gradient" : [
+      "extended-gray:1.00000,1.00000",
+      "extended-gray:0.75000,1.00000"
+    ],
+    "orientation" : {
+      "start" : {
+        "x" : 0.5,
+        "y" : 1
+      },
+      "stop" : {
+        "x" : 0.5,
+        "y" : 0.3
+      }
+    }
   },
   "groups" : [
     {
       "layers" : [
         {
-          "fill" : {
-            "automatic-gradient" : "display-p3:0.05490,0.24706,0.60784,1.00000"
-          },
+          "fill-specializations" : [
+            {
+              "value" : "automatic"
+            },
+            {
+              "appearance" : "dark",
+              "value" : {
+                "automatic-gradient" : "extended-gray:0.75000,1.00000",
+                "orientation" : {
+                  "start" : {
+                    "x" : 0.5,
+                    "y" : 0
+                  },
+                  "stop" : {
+                    "x" : 0.5,
+                    "y" : 0.6952360133110967
+                  }
+                }
+              }
+            },
+            {
+              "appearance" : "tinted",
+              "value" : {
+                "solid" : "extended-gray:1.00000,1.00000"
+              }
+            }
+          ],
+          "glass" : true,
+          "hidden" : false,
           "image-name" : "daytrace-ring.png",
           "name" : "Timeline",
+          "opacity-specializations" : [
+            {
+              "appearance" : "tinted",
+              "value" : 0.7
+            }
+          ],
           "position" : {
             "scale" : 0.86,
             "translation-in-points" : [
-              0,
-              8
+              15.049999999999955,
+              -9.029999999999973
             ]
           }
         }
@@ -32,16 +77,33 @@
     {
       "layers" : [
         {
-          "fill" : {
-            "automatic-gradient" : "display-p3:1.00000,0.32157,0.23137,1.00000"
-          },
+          "blend-mode" : "normal",
+          "fill-specializations" : [
+            {
+              "value" : {
+                "solid" : "display-p3:1.00000,0.40912,0.18704,1.00000"
+              }
+            },
+            {
+              "appearance" : "tinted",
+              "value" : {
+                "solid" : "extended-gray:1.00000,1.00000"
+              }
+            }
+          ],
           "image-name" : "daytrace-dot.png",
           "name" : "Current activity",
+          "opacity-specializations" : [
+            {
+              "appearance" : "tinted",
+              "value" : 0.7
+            }
+          ],
           "position" : {
             "scale" : 0.86,
             "translation-in-points" : [
-              0,
-              8
+              39.99000000000001,
+              -31.34375
             ]
           }
         }
@@ -57,9 +119,8 @@
     }
   ],
   "supported-platforms" : {
-    "circles" : [
-      "watchOS"
-    ],
-    "squares" : "shared"
+    "squares" : [
+      "macOS"
+    ]
   }
 }
