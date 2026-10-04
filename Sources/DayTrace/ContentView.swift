@@ -248,21 +248,46 @@ private struct DayTimelineChart: View {
             }
 
             if let visibleDomain {
-                ZStack(alignment: .topLeading) {
+                VStack(spacing: 4) {
+                    ZStack(alignment: .topLeading) {
+                        Color.clear
+
+                        if let hoveredSession = hoverState.session {
+                            TimelineTooltip(session: hoveredSession)
+                                .offset(x: tooltipOffset)
+                                .allowsHitTesting(false)
+                                .transition(.opacity)
+                        }
+                    }
+                    .frame(height: 54)
+
                     Chart {
                         ForEach(visibleSessions) { session in
                             BarMark(
                                 xStart: .value("Початок", visibleStart(for: session)),
                                 xEnd: .value("Кінець", visibleEnd(for: session)),
-                                y: .value("День", "Активність")
+                                y: .value("День", "Активність"),
+                                height: .ratio(1)
                             )
-                            .foregroundStyle(session.category.timelineColor)
-                            .opacity(session.isIdle ? 0.35 : 0.9)
-                            .cornerRadius(4)
+                            .foregroundStyle(
+                                session.isIdle
+                                    ? Color.secondary
+                                    : session.category.timelineColor
+                            )
+                            .opacity(markOpacity(for: session))
                             .accessibilityLabel(session.displayTitle)
                             .accessibilityValue(
                                 "\(session.category.rawValue), \(DurationText.compact(session.duration))"
                             )
+                        }
+
+                        if let hoveredSession = hoverState.session {
+                            RuleMark(x: .value("Початок наведеної події", visibleStart(for: hoveredSession)))
+                                .foregroundStyle(.primary.opacity(0.55))
+                                .lineStyle(StrokeStyle(lineWidth: 1))
+                            RuleMark(x: .value("Кінець наведеної події", visibleEnd(for: hoveredSession)))
+                                .foregroundStyle(.primary.opacity(0.55))
+                                .lineStyle(StrokeStyle(lineWidth: 1))
                         }
 
                         if calendar.isDateInToday(date),
@@ -295,22 +320,21 @@ private struct DayTimelineChart: View {
                     }
                     .chartOverlay { proxy in
                         GeometryReader { geometry in
-                            Rectangle()
-                                .fill(.clear)
-                                .contentShape(Rectangle())
-                                .onContinuousHover { phase in
-                                    updateHover(phase, proxy: proxy, geometry: geometry)
-                                }
+                            ZStack {
+                                idlePattern(proxy: proxy, geometry: geometry)
+                                    .allowsHitTesting(false)
+
+                                Rectangle()
+                                    .fill(.clear)
+                                    .contentShape(Rectangle())
+                                    .onContinuousHover { phase in
+                                        updateHover(phase, proxy: proxy, geometry: geometry)
+                                    }
+                            }
                         }
                     }
+                    .animation(.easeOut(duration: 0.12), value: hoverState.session?.id)
                     .frame(height: 76)
-
-                    if let hoveredSession = hoverState.session {
-                        TimelineTooltip(session: hoveredSession)
-                            .offset(x: tooltipOffset, y: 4)
-                            .allowsHitTesting(false)
-                            .transition(.opacity)
-                    }
                 }
             } else {
                 Text("Активних сесій ще немає")
@@ -361,6 +385,53 @@ private struct DayTimelineChart: View {
     private var tooltipOffset: CGFloat {
         let tooltipWidth: CGFloat = 250
         return max(0, min(hoverState.x - tooltipWidth / 2, hoverState.width - tooltipWidth))
+    }
+
+    private func markOpacity(for session: ActivitySession) -> Double {
+        guard let hoveredSession = hoverState.session else {
+            return session.isIdle ? 0.28 : 0.9
+        }
+        if hoveredSession.id == session.id {
+            return session.isIdle ? 0.5 : 1
+        }
+        return session.isIdle ? 0.16 : 0.38
+    }
+
+    private func idlePattern(proxy: ChartProxy, geometry: GeometryProxy) -> some View {
+        Canvas { context, _ in
+            let plotFrame = geometry[proxy.plotAreaFrame]
+
+            for session in visibleSessions where session.isIdle {
+                guard let startX = proxy.position(forX: visibleStart(for: session)),
+                      let endX = proxy.position(forX: visibleEnd(for: session)) else { continue }
+
+                let rect = CGRect(
+                    x: plotFrame.minX + min(startX, endX),
+                    y: plotFrame.minY,
+                    width: abs(endX - startX),
+                    height: plotFrame.height
+                )
+                guard rect.width > 0 else { continue }
+
+                context.drawLayer { layer in
+                    layer.clip(to: Path(rect))
+                    var stripeX = rect.minX - rect.height
+                    while stripeX < rect.maxX {
+                        var stripe = Path()
+                        stripe.move(to: CGPoint(x: stripeX, y: rect.maxY))
+                        stripe.addLine(to: CGPoint(x: stripeX + rect.height, y: rect.minY))
+                        layer.stroke(
+                            stripe,
+                            with: .color(.secondary.opacity(
+                                hoverState.session?.id == session.id ? 0.75 : 0.48
+                            )),
+                            lineWidth: 1
+                        )
+                        stripeX += 7
+                    }
+                }
+            }
+        }
     }
 
     private func visibleStart(for session: ActivitySession) -> Double {
