@@ -232,8 +232,9 @@ private struct DayTimelineChart: View {
     let sessions: [ActivitySession]
     let date: Date
 
+    @StateObject private var hoverState = TimelineHoverState()
+
     private let calendar = Calendar.autoupdatingCurrent
-    private let axisValues: [Double] = [0, 21_600, 43_200, 64_800, 86_400]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -241,55 +242,86 @@ private struct DayTimelineChart: View {
                 Text("Огляд дня")
                     .font(.subheadline.bold())
                 Spacer()
-                Text("00:00–24:00")
+                Text(visibleRangeTitle)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
-            Chart {
-                ForEach(sessions.filter { $0.duration > 0.5 }) { session in
-                    BarMark(
-                        xStart: .value("Початок", secondsSinceStart(of: session.startedAt)),
-                        xEnd: .value("Кінець", secondsSinceStart(of: session.endedAt)),
-                        y: .value("День", "Активність")
-                    )
-                    .foregroundStyle(session.category.timelineColor)
-                    .opacity(session.isIdle ? 0.35 : 0.9)
-                    .cornerRadius(3)
-                    .accessibilityLabel(session.displayTitle)
-                    .accessibilityValue(
-                        "\(session.category.rawValue), \(DurationText.compact(session.duration))"
-                    )
-                }
+            if let visibleDomain {
+                ZStack(alignment: .topLeading) {
+                    Chart {
+                        ForEach(visibleSessions) { session in
+                            BarMark(
+                                xStart: .value("Початок", visibleStart(for: session)),
+                                xEnd: .value("Кінець", visibleEnd(for: session)),
+                                y: .value("День", "Активність")
+                            )
+                            .foregroundStyle(session.category.timelineColor)
+                            .opacity(session.isIdle ? 0.35 : 0.9)
+                            .cornerRadius(4)
+                            .accessibilityLabel(session.displayTitle)
+                            .accessibilityValue(
+                                "\(session.category.rawValue), \(DurationText.compact(session.duration))"
+                            )
+                        }
 
-                if calendar.isDateInToday(date) {
-                    RuleMark(x: .value("Зараз", secondsSinceStart(of: Date())))
-                        .foregroundStyle(.primary.opacity(0.65))
-                        .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
-                }
-            }
-            .chartXScale(domain: 0...86_400)
-            .chartYAxis(.hidden)
-            .chartLegend(.hidden)
-            .chartXAxis {
-                AxisMarks(values: axisValues) { value in
-                    AxisGridLine()
-                        .foregroundStyle(.secondary.opacity(0.18))
-                    AxisTick()
-                    AxisValueLabel {
-                        if let seconds = value.as(Double.self) {
-                            Text(String(format: "%02d:00", Int(seconds) / 3_600))
-                                .font(.caption2)
+                        if calendar.isDateInToday(date),
+                           visibleDomain.contains(secondsSinceStart(of: Date())) {
+                            RuleMark(x: .value("Зараз", secondsSinceStart(of: Date())))
+                                .foregroundStyle(.primary.opacity(0.65))
+                                .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
                         }
                     }
+                    .chartXScale(domain: visibleDomain)
+                    .chartYAxis(.hidden)
+                    .chartLegend(.hidden)
+                    .chartXAxis {
+                        AxisMarks(values: axisValues(for: visibleDomain)) { value in
+                            AxisGridLine()
+                                .foregroundStyle(.secondary.opacity(0.18))
+                            AxisTick()
+                            AxisValueLabel {
+                                if let seconds = value.as(Double.self) {
+                                    Text(timeLabel(for: seconds))
+                                        .font(.caption2)
+                                }
+                            }
+                        }
+                    }
+                    .chartPlotStyle { plotArea in
+                        plotArea
+                            .background(Color(nsColor: .textBackgroundColor).opacity(0.5))
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                    }
+                    .chartOverlay { proxy in
+                        GeometryReader { geometry in
+                            Rectangle()
+                                .fill(.clear)
+                                .contentShape(Rectangle())
+                                .onContinuousHover { phase in
+                                    updateHover(phase, proxy: proxy, geometry: geometry)
+                                }
+                        }
+                    }
+                    .frame(height: 76)
+
+                    if let hoveredSession = hoverState.session {
+                        TimelineTooltip(session: hoveredSession)
+                            .offset(x: tooltipOffset, y: 4)
+                            .allowsHitTesting(false)
+                            .transition(.opacity)
+                    }
                 }
+            } else {
+                Text("Активних сесій ще немає")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, minHeight: 48)
+                    .background(
+                        Color(nsColor: .textBackgroundColor).opacity(0.5),
+                        in: RoundedRectangle(cornerRadius: 6)
+                    )
             }
-            .chartPlotStyle { plotArea in
-                plotArea
-                    .background(Color(nsColor: .textBackgroundColor).opacity(0.5))
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-            }
-            .frame(height: 66)
         }
         .padding(.horizontal, 12)
         .padding(.top, 10)
@@ -297,9 +329,144 @@ private struct DayTimelineChart: View {
         .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
     }
 
+    private var activeSessions: [ActivitySession] {
+        sessions.filter { !$0.isIdle && $0.duration > 0.5 }
+    }
+
+    private var visibleDomain: ClosedRange<Double>? {
+        guard let firstStart = activeSessions.map(\.startedAt).min(),
+              let lastEnd = activeSessions.map(\.endedAt).max() else { return nil }
+
+        let lowerBound = secondsSinceStart(of: firstStart)
+        let upperBound = max(secondsSinceStart(of: lastEnd), lowerBound + 60)
+        return lowerBound...min(86_400, upperBound)
+    }
+
+    private var visibleSessions: [ActivitySession] {
+        guard let visibleDomain else { return [] }
+        return sessions
+            .filter {
+                $0.duration > 0.5
+                    && secondsSinceStart(of: $0.endedAt) > visibleDomain.lowerBound
+                    && secondsSinceStart(of: $0.startedAt) < visibleDomain.upperBound
+            }
+            .sorted { $0.startedAt < $1.startedAt }
+    }
+
+    private var visibleRangeTitle: String {
+        guard let visibleDomain else { return "" }
+        return "\(timeLabel(for: visibleDomain.lowerBound))–\(timeLabel(for: visibleDomain.upperBound))"
+    }
+
+    private var tooltipOffset: CGFloat {
+        let tooltipWidth: CGFloat = 250
+        return max(0, min(hoverState.x - tooltipWidth / 2, hoverState.width - tooltipWidth))
+    }
+
+    private func visibleStart(for session: ActivitySession) -> Double {
+        max(visibleDomain?.lowerBound ?? 0, secondsSinceStart(of: session.startedAt))
+    }
+
+    private func visibleEnd(for session: ActivitySession) -> Double {
+        min(visibleDomain?.upperBound ?? 86_400, secondsSinceStart(of: session.endedAt))
+    }
+
+    private func updateHover(
+        _ phase: HoverPhase,
+        proxy: ChartProxy,
+        geometry: GeometryProxy
+    ) {
+        switch phase {
+        case .active(let location):
+            let plotFrame = geometry[proxy.plotAreaFrame]
+            let plotX = location.x - plotFrame.minX
+            guard plotX >= 0,
+                  plotX <= plotFrame.width,
+                  let seconds: Double = proxy.value(atX: plotX) else {
+                hoverState.session = nil
+                return
+            }
+
+            hoverState.width = geometry.size.width
+            hoverState.x = location.x
+            hoverState.session = visibleSessions.last {
+                visibleStart(for: $0) <= seconds && seconds <= visibleEnd(for: $0)
+            }
+        case .ended:
+            hoverState.session = nil
+        }
+    }
+
+    private func axisValues(for domain: ClosedRange<Double>) -> [Double] {
+        let span = domain.upperBound - domain.lowerBound
+        let stride: Double
+        switch span {
+        case ...1_800: stride = 300
+        case ...3_600: stride = 900
+        case ...10_800: stride = 1_800
+        case ...28_800: stride = 3_600
+        case ...57_600: stride = 7_200
+        default: stride = 14_400
+        }
+
+        var values: [Double] = []
+        var value = ceil(domain.lowerBound / stride) * stride
+        while value <= domain.upperBound {
+            values.append(value)
+            value += stride
+        }
+        if values.count < 2 {
+            return [domain.lowerBound, domain.upperBound]
+        }
+        return values
+    }
+
+    private func timeLabel(for seconds: Double) -> String {
+        let value = calendar.startOfDay(for: date).addingTimeInterval(seconds)
+        return value.formatted(date: .omitted, time: .shortened)
+    }
+
     private func secondsSinceStart(of value: Date) -> Double {
         let start = calendar.startOfDay(for: date)
         return min(86_400, max(0, value.timeIntervalSince(start)))
+    }
+}
+
+@MainActor
+private final class TimelineHoverState: ObservableObject {
+    @Published var session: ActivitySession?
+    @Published var x: CGFloat = 0
+    @Published var width: CGFloat = 0
+}
+
+private struct TimelineTooltip: View {
+    let session: ActivitySession
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(session.displayTitle)
+                .font(.caption.bold())
+                .lineLimit(2)
+            Text("\(session.appName) • \(session.category.rawValue)")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            Text("\(timeText(session.startedAt))–\(timeText(session.endedAt)) • \(DurationText.compact(session.duration))")
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(.secondary)
+        }
+        .padding(8)
+        .frame(width: 250, alignment: .leading)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(.secondary.opacity(0.2))
+        }
+        .shadow(color: .black.opacity(0.18), radius: 6, y: 2)
+    }
+
+    private func timeText(_ date: Date) -> String {
+        date.formatted(date: .omitted, time: .shortened)
     }
 }
 
