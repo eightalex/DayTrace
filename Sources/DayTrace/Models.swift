@@ -152,7 +152,12 @@ struct AppCategoryRule: Codable, Identifiable, Hashable {
     func matches(appName: String, bundleIdentifier: String?, contextTitle: String = "") -> Bool {
         guard Self.key(appName: self.appName, bundleIdentifier: self.bundleIdentifier)
             == Self.key(appName: appName, bundleIdentifier: bundleIdentifier) else { return false }
-        guard let ownContextTitle = self.contextTitle else { return true }
+        guard let ownContextTitle = self.contextTitle else {
+            return !ApplicationIdentity.isBrowser(
+                appName: self.appName,
+                bundleIdentifier: self.bundleIdentifier
+            ) || Self.normalizedContextTitle(contextTitle).isEmpty
+        }
         return Self.normalizedContextTitle(ownContextTitle)
             == Self.normalizedContextTitle(contextTitle)
     }
@@ -184,7 +189,11 @@ enum ActivityClassifier {
         if containsAny(context, ["claude", "chatgpt", "gemini", "perplexity", "ollama"]) {
             return .ai
         }
-        if containsAny(context, ["youtube", "vimeo", "netflix", "megogo", "twitch"]) {
+        if isVideoService(
+            appName: appName,
+            bundleIdentifier: bundleIdentifier,
+            title: title
+        ) {
             return .video
         }
         if containsAny(app, ["xcode", "visual studio code", "cursor", "zed", "sublime", "intellij", "webstorm", "pycharm", "terminal", "iterm", "warp", "github desktop", "docker"]) {
@@ -203,6 +212,47 @@ enum ActivityClassifier {
             return .system
         }
         return .other
+    }
+
+    static func isVideoService(
+        appName: String,
+        bundleIdentifier: String? = nil,
+        title: String
+    ) -> Bool {
+        let app = appName.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        let bundle = (bundleIdentifier ?? "").lowercased()
+        let normalizedTitle = title.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        let context = "\(app) \(normalizedTitle)"
+
+        let videoAppNames = [
+            "plex", "netflix", "max", "tv", "prime video", "disney+",
+            "megogo", "sweet.tv", "twitch", "vimeo", "hulu", "crunchyroll"
+        ]
+        let videoBundleFragments = [
+            "tv.plex.desktop", "com.netflix", "com.wbd", "com.hbo",
+            "com.apple.tv", "com.amazon.avod", "com.disney", "com.megogo",
+            "sweet.tv", "tv.twitch", "com.hulu", "com.crunchyroll"
+        ]
+        let videoTitleMarkers = [
+            "youtube", "netflix", "hbo max", "prime video",
+            "amazon prime video", "disney+", "disney plus", "apple tv+",
+            "apple tv plus", "megogo", "sweet.tv", "sweet tv", "київстар тб",
+            "kyivstar tv", "twitch", "vimeo", "hulu", "paramount+",
+            "paramount plus", "peacock", "crunchyroll"
+        ]
+        let isMaxTitle = normalizedTitle == "max"
+            || normalizedTitle.hasPrefix("max |")
+            || normalizedTitle.hasPrefix("max:")
+        let hasNamedService = normalizedTitle.range(
+            of: "\\b(hbo|plex)\\b",
+            options: [.regularExpression, .caseInsensitive]
+        ) != nil
+
+        return videoAppNames.contains(app)
+            || videoBundleFragments.contains { bundle.contains($0) }
+            || videoTitleMarkers.contains { context.contains($0) }
+            || isMaxTitle
+            || hasNamedService
     }
 
     private static func containsAny(_ value: String, _ needles: [String]) -> Bool {

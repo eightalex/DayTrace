@@ -359,6 +359,25 @@ final class ActivityStore: ObservableObject {
         let url = fileURL(for: date)
         guard let data = try? Data(contentsOf: url),
               var result = try? JSONDecoder.dayTrace.decode([ActivitySession].self, from: data) else { return [] }
+        for index in result.indices where !result[index].isIdle
+            && ApplicationIdentity.isBrowser(
+                appName: result[index].appName,
+                bundleIdentifier: result[index].bundleIdentifier
+            ) {
+            let automaticCategory = ActivityClassifier.classify(
+                appName: result[index].appName,
+                bundleIdentifier: result[index].bundleIdentifier,
+                title: result[index].windowTitle,
+                isIdle: false
+            )
+            result[index].category = assignedCategory(
+                appName: result[index].appName,
+                bundleIdentifier: result[index].bundleIdentifier,
+                windowTitle: result[index].windowTitle,
+                automaticCategory: automaticCategory,
+                isIdle: false
+            )
+        }
         for rule in categoryRules.sorted(by: { !$0.isContextSpecific && $1.isContextSpecific }) {
             apply(rule, to: &result)
         }

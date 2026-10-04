@@ -8,6 +8,39 @@ enum SelfTest {
             "YouTube classification"
         )
         check(
+            ActivityClassifier.classify(
+                appName: "Google Chrome",
+                title: "The Last of Us | HBO Max",
+                isIdle: false
+            ) == .video,
+            "HBO Max classification"
+        )
+        check(
+            ActivityClassifier.classify(
+                appName: "Plex",
+                bundleIdentifier: "tv.plex.desktop",
+                title: "Plex",
+                isIdle: false
+            ) == .video,
+            "Plex app classification"
+        )
+        check(
+            ActivityClassifier.classify(
+                appName: "Google Chrome",
+                title: "The Crown | Netflix",
+                isIdle: false
+            ) == .video,
+            "Netflix tab classification"
+        )
+        check(
+            ActivityClassifier.classify(
+                appName: "Google Chrome",
+                title: "Project dashboard for complex systems",
+                isIdle: false
+            ) == .web,
+            "short video service names only match complete words"
+        )
+        check(
             ActivityClassifier.classify(appName: "Claude", title: "Azure MCP setup", isIdle: false) == .ai,
             "Claude chat classification"
         )
@@ -135,6 +168,14 @@ enum SelfTest {
         check(
             legacyRule?.contextTitle == nil && legacyRule?.category == .web,
             "existing application category rules remain decodable"
+        )
+        check(
+            legacyRule?.matches(
+                appName: "Google Chrome",
+                bundleIdentifier: "com.google.Chrome",
+                contextTitle: "The Crown | Netflix"
+            ) == false,
+            "legacy browser-wide rules do not override titled tabs"
         )
         check(
             CategoryColorValue(red: 1.2, green: -0.1, blue: 0.5, opacity: 2)
