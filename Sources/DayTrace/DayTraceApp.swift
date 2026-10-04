@@ -10,11 +10,12 @@ struct DayTraceApp: App {
         }
         .defaultSize(width: 880, height: 680)
 
-        MenuBarExtra(
-            "DayTrace",
-            image: store.isTracking ? "MenuBarIconTemplate" : "MenuBarIconPausedTemplate"
-        ) {
+        MenuBarExtra {
             MenuBarView(store: store)
+        } label: {
+            Image(nsImage: store.isTracking ? MenuBarIcon.active : MenuBarIcon.paused)
+                .renderingMode(.template)
+                .accessibilityLabel("DayTrace")
         }
     }
 }
