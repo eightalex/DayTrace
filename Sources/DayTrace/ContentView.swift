@@ -312,6 +312,7 @@ private struct SessionRow: View {
 
 private struct CategoryManagerView: View {
     @ObservedObject var store: ActivityStore
+    @StateObject private var viewState = CategoryManagerViewState()
 
     private let columns = [
         GridItem(.adaptive(minimum: 300, maximum: 520), spacing: 14, alignment: .top)
@@ -334,17 +335,21 @@ private struct CategoryManagerView: View {
             }
 
             ScrollView {
-                LazyVGrid(columns: columns, alignment: .leading, spacing: 14) {
-                    ForEach(ActivityCategory.assignableCases) { category in
-                        CategoryRuleCard(
-                            category: category,
-                            rules: store.categorizedApplications(for: category),
-                            color: store.timelineColor(for: category),
-                            onColorChange: { color in
-                                store.setCategoryColor(CategoryColorValue(color: color), for: category)
+                VStack(alignment: .leading, spacing: 14) {
+                    recentTabsSection
+
+                    LazyVGrid(columns: columns, alignment: .leading, spacing: 14) {
+                        ForEach(ActivityCategory.assignableCases) { category in
+                            CategoryRuleCard(
+                                category: category,
+                                rules: store.categorizedApplications(for: category),
+                                color: store.timelineColor(for: category),
+                                onColorChange: { color in
+                                    store.setCategoryColor(CategoryColorValue(color: color), for: category)
+                                }
+                            ) { ruleID in
+                                store.moveCategoryRule(id: ruleID, to: category)
                             }
-                        ) { ruleID in
-                            store.moveCategoryRule(id: ruleID, to: category)
                         }
                     }
                 }
@@ -354,6 +359,72 @@ private struct CategoryManagerView: View {
         }
         .padding(24)
     }
+
+    private var recentTabsSection: some View {
+        DisclosureGroup(isExpanded: $viewState.isShowingRecentTabs) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    TextField("Пошук вкладок", text: $viewState.recentTabSearch)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(maxWidth: 260)
+                    Spacer()
+                    if filteredRecentTabs.count > 15 {
+                        Text("Показано 15 із \(filteredRecentTabs.count)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                if visibleRecentTabs.isEmpty {
+                    Text(viewState.recentTabSearch.isEmpty ? "Нових вкладок за останні 7 днів немає" : "Нічого не знайдено")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.vertical, 4)
+                } else {
+                    PillFlowLayout(spacing: 8) {
+                        ForEach(visibleRecentTabs) { rule in
+                            AppRulePill(rule: rule, color: store.timelineColor(for: rule.category))
+                                .draggable(rule.id) {
+                                    AppRulePill(rule: rule, color: store.timelineColor(for: rule.category))
+                                        .opacity(0.9)
+                                }
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .padding(.top, 10)
+        } label: {
+            HStack(spacing: 8) {
+                Label("Нещодавні вкладки", systemImage: "rectangle.stack")
+                    .font(.headline)
+                Text("\(store.recentBrowserTabs.count)")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(14)
+        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 14))
+    }
+
+    private var filteredRecentTabs: [AppCategoryRule] {
+        let query = viewState.recentTabSearch.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return store.recentBrowserTabs }
+        return store.recentBrowserTabs.filter {
+            $0.displayName.localizedCaseInsensitiveContains(query)
+                || $0.appName.localizedCaseInsensitiveContains(query)
+        }
+    }
+
+    private var visibleRecentTabs: [AppCategoryRule] {
+        Array(filteredRecentTabs.prefix(15))
+    }
+}
+
+@MainActor
+private final class CategoryManagerViewState: ObservableObject {
+    @Published var isShowingRecentTabs = false
+    @Published var recentTabSearch = ""
 }
 
 private struct CategoryRuleCard: View {
@@ -397,13 +468,27 @@ private struct CategoryRuleCard: View {
                     .frame(maxWidth: .infinity, minHeight: 38, alignment: .leading)
             } else {
                 PillFlowLayout(spacing: 8) {
-                    ForEach(rules) { rule in
+                    ForEach(visibleRules) { rule in
                         AppRulePill(rule: rule, color: color)
                             .draggable(rule.id) {
                                 AppRulePill(rule: rule, color: color)
                                     .opacity(0.9)
                             }
                             .transition(.scale(scale: 0.85).combined(with: .opacity))
+                    }
+                    if rules.count > 6 {
+                        Button(dropState.isShowingAllRules ? "Згорнути" : "Ще \(rules.count - 6)") {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                dropState.isShowingAllRules.toggle()
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(color)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 6)
+                        .background(color.opacity(0.09), in: Capsule())
+                        .contentShape(Capsule())
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -435,6 +520,10 @@ private struct CategoryRuleCard: View {
             }
         }
         .animation(.spring(response: 0.38, dampingFraction: 0.8), value: rules)
+    }
+
+    private var visibleRules: [AppCategoryRule] {
+        dropState.isShowingAllRules ? rules : Array(rules.prefix(6))
     }
 }
 
@@ -503,6 +592,7 @@ private final class SevenPixelColorWell: NSColorWell {
 @MainActor
 private final class CategoryDropState: ObservableObject {
     @Published var isTargeted = false
+    @Published var isShowingAllRules = false
 }
 
 private struct AppRulePill: View {

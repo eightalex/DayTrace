@@ -10,6 +10,7 @@ final class ActivityStore: ObservableObject {
     @Published private(set) var isVisibleInDock = true
     @Published private(set) var categoryRules: [AppCategoryRule] = []
     @Published private(set) var categoryColors: [ActivityCategory: CategoryColorValue] = [:]
+    @Published private(set) var recentBrowserTabs: [AppCategoryRule] = []
     @Published var selectedDate = Date()
 
     private let calendar = Calendar.autoupdatingCurrent
@@ -29,6 +30,7 @@ final class ActivityStore: ObservableObject {
         observedDay = selectedDate
         trackingSessions = loadSessions(for: observedDay)
         sessions = trackingSessions
+        refreshRecentBrowserTabs()
         startTimer()
         DispatchQueue.main.async { [weak self] in
             self?.applyDockVisibility(activate: false)
@@ -60,21 +62,15 @@ final class ActivityStore: ObservableObject {
     var categorizedApplications: [AppCategoryRule] {
         var applications: [String: AppCategoryRule] = [:]
         for session in sessions.sorted(by: { $0.startedAt < $1.startedAt }) where !session.isIdle {
-            let browserTabTitle = ApplicationIdentity.browserTabTitle(
-                appName: session.appName,
-                bundleIdentifier: session.bundleIdentifier,
-                windowTitle: session.windowTitle
-            )
             if ApplicationIdentity.isBrowser(
                 appName: session.appName,
                 bundleIdentifier: session.bundleIdentifier
-            ), browserTabTitle == nil {
+            ) {
                 continue
             }
             let application = AppCategoryRule(
                 appName: session.appName,
                 bundleIdentifier: session.bundleIdentifier,
-                contextTitle: browserTabTitle,
                 category: session.category
             )
             applications[application.id] = application
@@ -116,7 +112,8 @@ final class ActivityStore: ObservableObject {
 
     func moveCategoryRule(id: String, to category: ActivityCategory) {
         guard category != .away,
-              let rule = categorizedApplications.first(where: { $0.id == id }) else { return }
+              let rule = (categorizedApplications + recentBrowserTabs)
+                .first(where: { $0.id == id }) else { return }
         var movedRule = rule
         movedRule.category = category
         setCategoryRule(movedRule)
@@ -264,6 +261,9 @@ final class ActivityStore: ObservableObject {
         if didStartSession || lastPersistedAt.map({ now.timeIntervalSince($0) >= persistenceInterval }) ?? true {
             saveTrackingSessions(for: now)
         }
+        if didStartSession {
+            refreshRecentBrowserTabs()
+        }
     }
 
     private func closeCurrentSession(at date: Date) {
@@ -300,6 +300,7 @@ final class ActivityStore: ObservableObject {
             apply(rule, to: &sessions)
         }
         saveTrackingSessions(for: observedDay)
+        refreshRecentBrowserTabs()
     }
 
     private func apply(_ rule: AppCategoryRule, to target: inout [ActivitySession]) {
@@ -390,6 +391,45 @@ final class ActivityStore: ObservableObject {
         } catch {
             NSLog("DayTrace could not save category rules: %@", error.localizedDescription)
         }
+    }
+
+    private func refreshRecentBrowserTabs(referenceDate: Date = Date()) {
+        let today = calendar.startOfDay(for: referenceDate)
+        let cutoff = calendar.date(byAdding: .day, value: -6, to: today) ?? today
+        let pinnedTabIDs = Set(categoryRules.filter(\.isContextSpecific).map(\.id))
+        var latestTabs: [String: (rule: AppCategoryRule, lastSeenAt: Date)] = [:]
+
+        for dayOffset in 0..<7 {
+            guard let day = calendar.date(byAdding: .day, value: -dayOffset, to: today) else {
+                continue
+            }
+            let daySessions = calendar.isDate(day, inSameDayAs: observedDay)
+                ? trackingSessions
+                : loadSessions(for: day)
+
+            for session in daySessions where !session.isIdle && session.endedAt >= cutoff {
+                guard let title = ApplicationIdentity.browserTabTitle(
+                    appName: session.appName,
+                    bundleIdentifier: session.bundleIdentifier,
+                    windowTitle: session.windowTitle
+                ) else { continue }
+
+                let rule = AppCategoryRule(
+                    appName: session.appName,
+                    bundleIdentifier: session.bundleIdentifier,
+                    contextTitle: title,
+                    category: session.category
+                )
+                guard !pinnedTabIDs.contains(rule.id) else { continue }
+                if latestTabs[rule.id]?.lastSeenAt ?? .distantPast < session.endedAt {
+                    latestTabs[rule.id] = (rule, session.endedAt)
+                }
+            }
+        }
+
+        recentBrowserTabs = latestTabs.values
+            .sorted { $0.lastSeenAt > $1.lastSeenAt }
+            .map(\.rule)
     }
 
     private func loadCategoryColors() -> [ActivityCategory: CategoryColorValue] {
