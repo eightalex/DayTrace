@@ -9,6 +9,7 @@ final class ActivityStore: ObservableObject {
     @Published private(set) var accessibilityGranted = false
     @Published private(set) var isVisibleInDock = true
     @Published private(set) var categoryRules: [AppCategoryRule] = []
+    @Published private(set) var categoryColors: [ActivityCategory: CategoryColorValue] = [:]
     @Published var selectedDate = Date()
 
     private let calendar = Calendar.autoupdatingCurrent
@@ -24,6 +25,7 @@ final class ActivityStore: ObservableObject {
         isVisibleInDock = UserDefaults.standard.object(forKey: "showInDock") as? Bool ?? true
         accessibilityGranted = ActivityCapture.accessibilityGranted(prompt: false)
         categoryRules = loadCategoryRules()
+        categoryColors = loadCategoryColors()
         observedDay = selectedDate
         trackingSessions = loadSessions(for: observedDay)
         sessions = trackingSessions
@@ -95,6 +97,12 @@ final class ActivityStore: ObservableObject {
         var movedRule = rule
         movedRule.category = category
         setCategoryRule(movedRule)
+    }
+
+    func setCategoryColor(_ color: CategoryColorValue, for category: ActivityCategory) {
+        guard category != .away else { return }
+        categoryColors[category] = color
+        saveCategoryColors()
     }
 
     func toggleTracking() {
@@ -305,6 +313,10 @@ final class ActivityStore: ObservableObject {
         dataDirectory.appendingPathComponent("category-rules.json")
     }
 
+    private var categoryColorsURL: URL {
+        dataDirectory.appendingPathComponent("category-colors.json")
+    }
+
     private func loadSessions(for date: Date) -> [ActivitySession] {
         let url = fileURL(for: date)
         guard let data = try? Data(contentsOf: url),
@@ -340,6 +352,34 @@ final class ActivityStore: ObservableObject {
             try data.write(to: categoryRulesURL, options: .atomic)
         } catch {
             NSLog("DayTrace could not save category rules: %@", error.localizedDescription)
+        }
+    }
+
+    private func loadCategoryColors() -> [ActivityCategory: CategoryColorValue] {
+        guard let data = try? Data(contentsOf: categoryColorsURL),
+              let storedColors = try? JSONDecoder.dayTrace.decode(
+                  [String: CategoryColorValue].self,
+                  from: data
+              ) else { return [:] }
+
+        return Dictionary(uniqueKeysWithValues: storedColors.compactMap { name, color in
+            guard let category = ActivityCategory(rawValue: name), category != .away else {
+                return nil
+            }
+            return (category, color)
+        })
+    }
+
+    private func saveCategoryColors() {
+        do {
+            try FileManager.default.createDirectory(at: dataDirectory, withIntermediateDirectories: true)
+            let storedColors = Dictionary(uniqueKeysWithValues: categoryColors.map {
+                ($0.key.rawValue, $0.value)
+            })
+            let data = try JSONEncoder.dayTrace.encode(storedColors)
+            try data.write(to: categoryColorsURL, options: .atomic)
+        } catch {
+            NSLog("DayTrace could not save category colors: %@", error.localizedDescription)
         }
     }
 }

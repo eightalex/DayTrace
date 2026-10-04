@@ -89,6 +89,11 @@ enum SelfTest {
                 == "name:custom app",
             "category rules fall back to a normalized app name"
         )
+        check(
+            CategoryColorValue(red: 1.2, green: -0.1, blue: 0.5, opacity: 2)
+                == CategoryColorValue(red: 1, green: 0, blue: 0.5, opacity: 1),
+            "category color components stay in the displayable range"
+        )
 
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!

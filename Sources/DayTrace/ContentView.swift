@@ -57,7 +57,8 @@ struct ContentView: View {
                 categoryGrid
                 DayTimelineChart(
                     sessions: store.sessionsForSelectedDay,
-                    date: store.selectedDate
+                    date: store.selectedDate,
+                    categoryColors: store.categoryColors
                 )
                 timelineHeader
                 timelineList
@@ -187,7 +188,7 @@ struct ContentView: View {
                 HStack(spacing: 10) {
                     Image(systemName: item.category.symbol)
                         .frame(width: 24)
-                        .foregroundStyle(item.category.timelineColor)
+                        .foregroundStyle(store.timelineColor(for: item.category))
                     VStack(alignment: .leading, spacing: 2) {
                         Text(item.category.rawValue)
                             .font(.caption)
@@ -217,7 +218,10 @@ struct ContentView: View {
         ScrollView {
             LazyVStack(spacing: 0) {
                 ForEach(store.sessionsForSelectedDay) { session in
-                    SessionRow(session: session) { category in
+                    SessionRow(
+                        session: session,
+                        color: store.timelineColor(for: session.category)
+                    ) { category in
                         withAnimation(.easeInOut(duration: 0.2)) {
                             store.assignCategory(category, to: session)
                         }
@@ -240,6 +244,7 @@ struct ContentView: View {
 
 private struct SessionRow: View {
     let session: ActivitySession
+    let color: Color
     let onCategoryChange: (ActivityCategory) -> Void
 
     var body: some View {
@@ -255,7 +260,7 @@ private struct SessionRow: View {
 
             Image(systemName: session.category.symbol)
                 .frame(width: 24, height: 24)
-                .foregroundStyle(session.isIdle ? Color.secondary : session.category.timelineColor)
+                .foregroundStyle(session.isIdle ? Color.secondary : color)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(session.displayTitle)
@@ -282,11 +287,11 @@ private struct SessionRow: View {
                                 Image(systemName: "chevron.down")
                                     .font(.system(size: 8, weight: .semibold))
                             }
-                            .foregroundStyle(session.category.timelineColor)
+                            .foregroundStyle(color)
                             .padding(.horizontal, 7)
                             .padding(.vertical, 3)
                             .background(
-                                session.category.timelineColor.opacity(0.1),
+                                color.opacity(0.1),
                                 in: Capsule()
                             )
                         }
@@ -333,7 +338,11 @@ private struct CategoryManagerView: View {
                     ForEach(ActivityCategory.assignableCases) { category in
                         CategoryRuleCard(
                             category: category,
-                            rules: store.categorizedApplications(for: category)
+                            rules: store.categorizedApplications(for: category),
+                            color: store.timelineColor(for: category),
+                            onColorChange: { color in
+                                store.setCategoryColor(CategoryColorValue(color: color), for: category)
+                            }
                         ) { ruleID in
                             store.moveCategoryRule(id: ruleID, to: category)
                         }
@@ -350,6 +359,8 @@ private struct CategoryManagerView: View {
 private struct CategoryRuleCard: View {
     let category: ActivityCategory
     let rules: [AppCategoryRule]
+    let color: Color
+    let onColorChange: (Color) -> Void
     let onMove: (String) -> Void
 
     @StateObject private var dropState = CategoryDropState()
@@ -358,7 +369,7 @@ private struct CategoryRuleCard: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 9) {
                 Image(systemName: category.symbol)
-                    .foregroundStyle(category.timelineColor)
+                    .foregroundStyle(color)
                     .frame(width: 24, height: 24)
                 Text(category.rawValue)
                     .font(.headline)
@@ -366,6 +377,17 @@ private struct CategoryRuleCard: View {
                 Text("\(rules.count)")
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
+                ColorPicker(
+                    "Колір категорії \(category.rawValue)",
+                    selection: Binding(
+                        get: { color },
+                        set: onColorChange
+                    ),
+                    supportsOpacity: false
+                )
+                .labelsHidden()
+                .frame(width: 24, height: 24)
+                .help("Змінити колір категорії \(category.rawValue)")
             }
 
             if rules.isEmpty {
@@ -376,9 +398,9 @@ private struct CategoryRuleCard: View {
             } else {
                 PillFlowLayout(spacing: 8) {
                     ForEach(rules) { rule in
-                        AppRulePill(rule: rule, color: category.timelineColor)
+                        AppRulePill(rule: rule, color: color)
                             .draggable(rule.id) {
-                                AppRulePill(rule: rule, color: category.timelineColor)
+                                AppRulePill(rule: rule, color: color)
                                     .opacity(0.9)
                             }
                             .transition(.scale(scale: 0.85).combined(with: .opacity))
@@ -390,13 +412,13 @@ private struct CategoryRuleCard: View {
         .padding(14)
         .frame(maxWidth: .infinity, minHeight: 116, alignment: .topLeading)
         .background(
-            category.timelineColor.opacity(dropState.isTargeted ? 0.14 : 0.055),
+            color.opacity(dropState.isTargeted ? 0.14 : 0.055),
             in: RoundedRectangle(cornerRadius: 14)
         )
         .overlay {
             RoundedRectangle(cornerRadius: 14)
                 .stroke(
-                    category.timelineColor.opacity(dropState.isTargeted ? 0.75 : 0.16),
+                    color.opacity(dropState.isTargeted ? 0.75 : 0.16),
                     lineWidth: dropState.isTargeted ? 2 : 1
                 )
         }
@@ -531,6 +553,7 @@ private struct PillFlowLayout: Layout {
 private struct DayTimelineChart: View {
     let sessions: [ActivitySession]
     let date: Date
+    let categoryColors: [ActivityCategory: CategoryColorValue]
 
     @StateObject private var hoverState = TimelineHoverState()
 
@@ -560,7 +583,7 @@ private struct DayTimelineChart: View {
                             .foregroundStyle(
                                 session.isIdle
                                     ? Color.secondary
-                                    : session.category.timelineColor
+                                    : timelineColor(for: session.category)
                             )
                             .cornerRadius(0)
                             .opacity(markOpacity(for: session))
@@ -789,6 +812,10 @@ private struct DayTimelineChart: View {
         let start = calendar.startOfDay(for: date)
         return min(86_400, max(0, value.timeIntervalSince(start)))
     }
+
+    private func timelineColor(for category: ActivityCategory) -> Color {
+        categoryColors[category]?.color ?? category.defaultTimelineColor
+    }
 }
 
 @MainActor
@@ -830,7 +857,7 @@ private struct TimelineTooltip: View {
 }
 
 private extension ActivityCategory {
-    var timelineColor: Color {
+    var defaultTimelineColor: Color {
         switch self {
         case .development: return .indigo
         case .communication: return .teal
@@ -842,6 +869,28 @@ private extension ActivityCategory {
         case .away: return .secondary
         case .other: return .brown
         }
+    }
+}
+
+private extension CategoryColorValue {
+    init(color: Color) {
+        let resolved = NSColor(color).usingColorSpace(.sRGB) ?? NSColor(color)
+        self.init(
+            red: Double(resolved.redComponent),
+            green: Double(resolved.greenComponent),
+            blue: Double(resolved.blueComponent),
+            opacity: Double(resolved.alphaComponent)
+        )
+    }
+
+    var color: Color {
+        Color(red: red, green: green, blue: blue, opacity: opacity)
+    }
+}
+
+private extension ActivityStore {
+    func timelineColor(for category: ActivityCategory) -> Color {
+        categoryColors[category]?.color ?? category.defaultTimelineColor
     }
 }
 

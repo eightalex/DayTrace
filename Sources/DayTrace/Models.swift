@@ -52,6 +52,20 @@ enum ActivityCategory: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+struct CategoryColorValue: Codable, Equatable {
+    let red: Double
+    let green: Double
+    let blue: Double
+    let opacity: Double
+
+    init(red: Double, green: Double, blue: Double, opacity: Double = 1) {
+        self.red = min(max(red, 0), 1)
+        self.green = min(max(green, 0), 1)
+        self.blue = min(max(blue, 0), 1)
+        self.opacity = min(max(opacity, 0), 1)
+    }
+}
+
 struct AppCategoryRule: Codable, Identifiable, Hashable {
     var appName: String
     var bundleIdentifier: String?
