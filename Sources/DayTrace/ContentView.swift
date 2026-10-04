@@ -266,7 +266,7 @@ private struct SessionRow: View {
                 Text(session.displayTitle)
                     .font(.headline)
                     .lineLimit(2)
-                HStack(spacing: 6) {
+                HStack(spacing: 2) {
                     Text(session.appName)
                     Text("•")
                     if session.isIdle {
@@ -447,8 +447,8 @@ private struct CompactCategoryColorPicker: NSViewRepresentable {
         Coordinator(onChange: onChange)
     }
 
-    func makeNSView(context: Context) -> NSColorWell {
-        let colorWell = NSColorWell(frame: .zero)
+    func makeNSView(context: Context) -> SevenPixelColorWell {
+        let colorWell = SevenPixelColorWell(frame: .zero)
         colorWell.colorWellStyle = .minimal
         colorWell.color = NSColor(color)
         colorWell.target = context.coordinator
@@ -458,11 +458,12 @@ private struct CompactCategoryColorPicker: NSViewRepresentable {
         return colorWell
     }
 
-    func updateNSView(_ colorWell: NSColorWell, context: Context) {
+    func updateNSView(_ colorWell: SevenPixelColorWell, context: Context) {
         context.coordinator.onChange = onChange
         let updatedColor = NSColor(color)
         if !colorWell.color.isEqual(updatedColor) {
             colorWell.color = updatedColor
+            colorWell.needsDisplay = true
         }
         colorWell.toolTip = "Змінити колір категорії \(category.rawValue)"
         colorWell.setAccessibilityLabel("Колір категорії \(category.rawValue)")
@@ -478,6 +479,24 @@ private struct CompactCategoryColorPicker: NSViewRepresentable {
         @objc func colorChanged(_ sender: NSColorWell) {
             onChange(Color(nsColor: sender.color))
         }
+    }
+}
+
+private final class SevenPixelColorWell: NSColorWell {
+    override func draw(_ dirtyRect: NSRect) {
+        let diameter: CGFloat = 7
+        let swatchRect = NSRect(
+            x: bounds.midX - diameter / 2,
+            y: bounds.midY - diameter / 2,
+            width: diameter,
+            height: diameter
+        )
+        let swatch = NSBezierPath(ovalIn: swatchRect)
+        color.setFill()
+        swatch.fill()
+        NSColor.separatorColor.withAlphaComponent(0.45).setStroke()
+        swatch.lineWidth = 0.75
+        swatch.stroke()
     }
 }
 
