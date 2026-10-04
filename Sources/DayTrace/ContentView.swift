@@ -2,34 +2,38 @@ import AppKit
 import Charts
 import SwiftUI
 
+private enum ContentTab: String, CaseIterable, Identifiable {
+    case timeline = "Хронологія"
+    case categories = "Категорії"
+
+    var id: String { rawValue }
+
+    var symbol: String {
+        switch self {
+        case .timeline: return "clock"
+        case .categories: return "square.grid.2x2"
+        }
+    }
+}
+
+@MainActor
+private final class ContentViewState: ObservableObject {
+    @Published var selectedTab: ContentTab = .timeline
+}
+
 struct ContentView: View {
     @ObservedObject var store: ActivityStore
+    @StateObject private var viewState = ContentViewState()
 
     var body: some View {
         VStack(spacing: 0) {
             header
             Divider()
 
-            if !store.accessibilityGranted {
-                permissionBanner
-                    .padding(.horizontal, 24)
-                    .padding(.top, 18)
-            }
-
-            if store.sessionsForSelectedDay.isEmpty {
-                emptyState
+            if viewState.selectedTab == .timeline {
+                timelineContent
             } else {
-                VStack(alignment: .leading, spacing: 18) {
-                    summary
-                    categoryGrid
-                    DayTimelineChart(
-                        sessions: store.sessionsForSelectedDay,
-                        date: store.selectedDate
-                    )
-                    timelineHeader
-                    timelineList
-                }
-                .padding(24)
+                CategoryManagerView(store: store)
             }
         }
         .frame(minWidth: 760, minHeight: 560)
@@ -37,35 +41,74 @@ struct ContentView: View {
         .onAppear { store.refreshPermission() }
     }
 
+    @ViewBuilder
+    private var timelineContent: some View {
+        if !store.accessibilityGranted {
+            permissionBanner
+                .padding(.horizontal, 24)
+                .padding(.top, 18)
+        }
+
+        if store.sessionsForSelectedDay.isEmpty {
+            emptyState
+        } else {
+            VStack(alignment: .leading, spacing: 18) {
+                summary
+                categoryGrid
+                DayTimelineChart(
+                    sessions: store.sessionsForSelectedDay,
+                    date: store.selectedDate
+                )
+                timelineHeader
+                timelineList
+            }
+            .padding(24)
+        }
+    }
+
     private var header: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("DayTrace")
                     .font(.title2.bold())
-                Text(dateTitle)
+                Text(viewState.selectedTab == .timeline ? dateTitle : "Менеджер категорій")
                     .foregroundStyle(.secondary)
             }
-            Spacer()
-            Button {
-                store.select(date: Calendar.current.date(byAdding: .day, value: -1, to: store.selectedDate)!)
-            } label: {
-                Image(systemName: "chevron.left")
-            }
-            .buttonStyle(.borderless)
 
-            Button("Сьогодні") { store.selectToday() }
+            Picker("Розділ", selection: $viewState.selectedTab) {
+                ForEach(ContentTab.allCases) { tab in
+                    Label(tab.rawValue, systemImage: tab.symbol)
+                        .tag(tab)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(width: 250)
+
+            Spacer()
+
+            if viewState.selectedTab == .timeline {
+                Button {
+                    store.select(date: Calendar.current.date(byAdding: .day, value: -1, to: store.selectedDate)!)
+                } label: {
+                    Image(systemName: "chevron.left")
+                }
+                .buttonStyle(.borderless)
+
+                Button("Сьогодні") { store.selectToday() }
+                    .disabled(Calendar.current.isDateInToday(store.selectedDate))
+
+                Button {
+                    let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: store.selectedDate)!
+                    store.select(date: tomorrow)
+                } label: {
+                    Image(systemName: "chevron.right")
+                }
+                .buttonStyle(.borderless)
                 .disabled(Calendar.current.isDateInToday(store.selectedDate))
 
-            Button {
-                let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: store.selectedDate)!
-                store.select(date: tomorrow)
-            } label: {
-                Image(systemName: "chevron.right")
+                Divider().frame(height: 22)
             }
-            .buttonStyle(.borderless)
-            .disabled(Calendar.current.isDateInToday(store.selectedDate))
-
-            Divider().frame(height: 22)
 
             Button {
                 store.toggleDockVisibility()
@@ -174,7 +217,11 @@ struct ContentView: View {
         ScrollView {
             LazyVStack(spacing: 0) {
                 ForEach(store.sessionsForSelectedDay) { session in
-                    SessionRow(session: session)
+                    SessionRow(session: session) { category in
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            store.assignCategory(category, to: session)
+                        }
+                    }
                     if session.id != store.sessionsForSelectedDay.last?.id {
                         Divider().padding(.leading, 104)
                     }
@@ -193,6 +240,7 @@ struct ContentView: View {
 
 private struct SessionRow: View {
     let session: ActivitySession
+    let onCategoryChange: (ActivityCategory) -> Void
 
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
@@ -216,7 +264,36 @@ private struct SessionRow: View {
                 HStack(spacing: 6) {
                     Text(session.appName)
                     Text("•")
-                    Text(session.category.rawValue)
+                    if session.isIdle {
+                        Text(session.category.rawValue)
+                    } else {
+                        Menu {
+                            ForEach(ActivityCategory.assignableCases) { category in
+                                Button {
+                                    onCategoryChange(category)
+                                } label: {
+                                    Label(category.rawValue, systemImage: category.symbol)
+                                }
+                            }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: session.category.symbol)
+                                Text(session.category.rawValue)
+                                Image(systemName: "chevron.down")
+                                    .font(.system(size: 8, weight: .semibold))
+                            }
+                            .foregroundStyle(session.category.timelineColor)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .background(
+                                session.category.timelineColor.opacity(0.1),
+                                in: Capsule()
+                            )
+                        }
+                        .menuStyle(.borderlessButton)
+                        .fixedSize()
+                        .help("Змінити категорію для \(session.appName)")
+                    }
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -225,6 +302,228 @@ private struct SessionRow: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
+    }
+}
+
+private struct CategoryManagerView: View {
+    @ObservedObject var store: ActivityStore
+
+    private let columns = [
+        GridItem(.adaptive(minimum: 300, maximum: 520), spacing: 14, alignment: .top)
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Застосунки за категоріями")
+                        .font(.title3.bold())
+                    Text("Перетягування в інший блок змінює та закріплює категорію застосунку.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Text("\(store.categorizedApplications.count) застосунків")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            ScrollView {
+                LazyVGrid(columns: columns, alignment: .leading, spacing: 14) {
+                    ForEach(ActivityCategory.assignableCases) { category in
+                        CategoryRuleCard(
+                            category: category,
+                            rules: store.categorizedApplications(for: category)
+                        ) { ruleID in
+                            store.moveCategoryRule(id: ruleID, to: category)
+                        }
+                    }
+                }
+                .padding(.bottom, 4)
+            }
+        }
+        .padding(24)
+    }
+}
+
+private struct CategoryRuleCard: View {
+    let category: ActivityCategory
+    let rules: [AppCategoryRule]
+    let onMove: (String) -> Void
+
+    @StateObject private var dropState = CategoryDropState()
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 9) {
+                Image(systemName: category.symbol)
+                    .foregroundStyle(category.timelineColor)
+                    .frame(width: 24, height: 24)
+                Text(category.rawValue)
+                    .font(.headline)
+                Spacer()
+                Text("\(rules.count)")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+
+            if rules.isEmpty {
+                Text("Перетягніть застосунок сюди")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .frame(maxWidth: .infinity, minHeight: 38, alignment: .leading)
+            } else {
+                PillFlowLayout(spacing: 8) {
+                    ForEach(rules) { rule in
+                        AppRulePill(rule: rule, color: category.timelineColor)
+                            .draggable(rule.id) {
+                                AppRulePill(rule: rule, color: category.timelineColor)
+                                    .opacity(0.9)
+                            }
+                            .transition(.scale(scale: 0.85).combined(with: .opacity))
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, minHeight: 116, alignment: .topLeading)
+        .background(
+            category.timelineColor.opacity(dropState.isTargeted ? 0.14 : 0.055),
+            in: RoundedRectangle(cornerRadius: 14)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(
+                    category.timelineColor.opacity(dropState.isTargeted ? 0.75 : 0.16),
+                    lineWidth: dropState.isTargeted ? 2 : 1
+                )
+        }
+        .scaleEffect(dropState.isTargeted ? 1.015 : 1)
+        .dropDestination(for: String.self) { ruleIDs, _ in
+            guard let ruleID = ruleIDs.first else { return false }
+            withAnimation(.spring(response: 0.38, dampingFraction: 0.78)) {
+                onMove(ruleID)
+            }
+            return true
+        } isTargeted: { isTargeted in
+            withAnimation(.easeInOut(duration: 0.16)) {
+                dropState.isTargeted = isTargeted
+            }
+        }
+        .animation(.spring(response: 0.38, dampingFraction: 0.8), value: rules)
+    }
+}
+
+@MainActor
+private final class CategoryDropState: ObservableObject {
+    @Published var isTargeted = false
+}
+
+private struct AppRulePill: View {
+    let rule: AppCategoryRule
+    let color: Color
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ApplicationIcon(bundleIdentifier: rule.bundleIdentifier)
+            Text(rule.appName)
+                .font(.caption.weight(.medium))
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 6)
+        .background(color.opacity(0.13), in: Capsule())
+        .overlay {
+            Capsule()
+                .stroke(color.opacity(0.18), lineWidth: 1)
+        }
+        .contentShape(Capsule())
+    }
+}
+
+private struct ApplicationIcon: View {
+    let bundleIdentifier: String?
+
+    var body: some View {
+        Group {
+            if let icon {
+                Image(nsImage: icon)
+                    .resizable()
+                    .scaledToFit()
+            } else {
+                Image(systemName: "app.fill")
+                    .resizable()
+                    .scaledToFit()
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(width: 16, height: 16)
+    }
+
+    private var icon: NSImage? {
+        guard let bundleIdentifier,
+              let appURL = NSWorkspace.shared.urlForApplication(
+                withBundleIdentifier: bundleIdentifier
+              ) else { return nil }
+        return NSWorkspace.shared.icon(forFile: appURL.path)
+    }
+}
+
+private struct PillFlowLayout: Layout {
+    let spacing: CGFloat
+
+    func sizeThatFits(
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout ()
+    ) -> CGSize {
+        let maxWidth = proposal.width ?? .infinity
+        var x: CGFloat = 0
+        var y: CGFloat = 0
+        var rowHeight: CGFloat = 0
+        var usedWidth: CGFloat = 0
+
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x > 0, x + size.width > maxWidth {
+                x = 0
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+            usedWidth = max(usedWidth, x + size.width)
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
+
+        return CGSize(width: min(maxWidth, usedWidth), height: y + rowHeight)
+    }
+
+    func placeSubviews(
+        in bounds: CGRect,
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout ()
+    ) {
+        var x = bounds.minX
+        var y = bounds.minY
+        var rowHeight: CGFloat = 0
+
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x > bounds.minX, x + size.width > bounds.maxX {
+                x = bounds.minX
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+            subview.place(
+                at: CGPoint(x: x, y: y),
+                anchor: .topLeading,
+                proposal: ProposedViewSize(size)
+            )
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
     }
 }
 
@@ -248,19 +547,7 @@ private struct DayTimelineChart: View {
             }
 
             if let visibleDomain {
-                VStack(spacing: 4) {
-                    ZStack(alignment: .topLeading) {
-                        Color.clear
-
-                        if let hoveredSession = hoverState.session {
-                            TimelineTooltip(session: hoveredSession)
-                                .offset(x: tooltipOffset)
-                                .allowsHitTesting(false)
-                                .transition(.opacity)
-                        }
-                    }
-                    .frame(height: 54)
-
+                ZStack(alignment: .topLeading) {
                     Chart {
                         ForEach(visibleSessions) { session in
                             BarMark(
@@ -279,15 +566,6 @@ private struct DayTimelineChart: View {
                             .accessibilityValue(
                                 "\(session.category.rawValue), \(DurationText.compact(session.duration))"
                             )
-                        }
-
-                        if let hoveredSession = hoverState.session {
-                            RuleMark(x: .value("Початок наведеної події", visibleStart(for: hoveredSession)))
-                                .foregroundStyle(.primary.opacity(0.55))
-                                .lineStyle(StrokeStyle(lineWidth: 1))
-                            RuleMark(x: .value("Кінець наведеної події", visibleEnd(for: hoveredSession)))
-                                .foregroundStyle(.primary.opacity(0.55))
-                                .lineStyle(StrokeStyle(lineWidth: 1))
                         }
 
                         if calendar.isDateInToday(date),
@@ -335,7 +613,16 @@ private struct DayTimelineChart: View {
                     }
                     .animation(.easeOut(duration: 0.12), value: hoverState.session?.id)
                     .frame(height: 76)
+
+                    if let hoveredSession = hoverState.session {
+                        TimelineTooltip(session: hoveredSession)
+                            .offset(x: tooltipOffset, y: -58)
+                            .zIndex(10)
+                            .allowsHitTesting(false)
+                            .transition(.opacity)
+                    }
                 }
+                .zIndex(10)
             } else {
                 Text("Активних сесій ще немає")
                     .font(.caption)
