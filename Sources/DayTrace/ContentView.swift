@@ -380,21 +380,11 @@ private struct CategoryRuleCard: View {
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
                     .fixedSize()
-                ColorPicker(
-                    "Колір категорії \(category.rawValue)",
-                    selection: Binding(
-                        get: { color },
-                        set: onColorChange
-                    ),
-                    supportsOpacity: false
+                CompactCategoryColorPicker(
+                    category: category,
+                    color: color,
+                    onChange: onColorChange
                 )
-                .labelsHidden()
-                .controlSize(.mini)
-                .fixedSize()
-                .scaleEffect(0.72)
-                .frame(width: 18, height: 18)
-                .clipped()
-                .help("Змінити колір категорії \(category.rawValue)")
             }
 
             if rules.isEmpty {
@@ -442,6 +432,37 @@ private struct CategoryRuleCard: View {
             }
         }
         .animation(.spring(response: 0.38, dampingFraction: 0.8), value: rules)
+    }
+}
+
+private struct CompactCategoryColorPicker: View {
+    let category: ActivityCategory
+    let color: Color
+    let onChange: (Color) -> Void
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(color)
+            Circle()
+                .strokeBorder(.primary.opacity(0.2), lineWidth: 1)
+
+            ColorPicker(
+                "Колір категорії \(category.rawValue)",
+                selection: Binding(
+                    get: { color },
+                    set: onChange
+                ),
+                supportsOpacity: false
+            )
+            .labelsHidden()
+            .opacity(0.02)
+            .frame(width: 18, height: 18)
+            .clipped()
+        }
+        .frame(width: 18, height: 18)
+        .contentShape(Circle())
+        .help("Змінити колір категорії \(category.rawValue)")
     }
 }
 
