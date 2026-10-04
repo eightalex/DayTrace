@@ -373,10 +373,13 @@ private struct CategoryRuleCard: View {
                     .frame(width: 24, height: 24)
                 Text(category.rawValue)
                     .font(.headline)
+                    .lineLimit(1)
+                    .layoutPriority(1)
                 Spacer()
                 Text("\(rules.count)")
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
+                    .fixedSize()
                 ColorPicker(
                     "Колір категорії \(category.rawValue)",
                     selection: Binding(
@@ -386,7 +389,11 @@ private struct CategoryRuleCard: View {
                     supportsOpacity: false
                 )
                 .labelsHidden()
-                .frame(width: 24, height: 24)
+                .controlSize(.mini)
+                .fixedSize()
+                .scaleEffect(0.72)
+                .frame(width: 18, height: 18)
+                .clipped()
                 .help("Змінити колір категорії \(category.rawValue)")
             }
 
