@@ -20,16 +20,53 @@ struct ActivitySession: Codable, Identifiable, Equatable {
     }
 }
 
-enum ActivityCategory: String, Codable, CaseIterable, Identifiable {
-    case development = "Розробка"
-    case communication = "Спілкування"
-    case ai = "AI-інструменти"
-    case video = "Відео"
-    case web = "Веб"
-    case documents = "Документи"
-    case system = "Система"
-    case away = "Перерва"
-    case other = "Інше"
+struct ActivityCategory: RawRepresentable, Codable, CaseIterable, Hashable, Identifiable {
+    let rawValue: String
+
+    init?(rawValue: String) {
+        let normalized = Self.normalizedName(rawValue)
+        guard !normalized.isEmpty else { return nil }
+        self.rawValue = normalized
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let rawValue = try container.decode(String.self)
+        guard let category = Self(rawValue: rawValue) else {
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Category name cannot be empty"
+            )
+        }
+        self = category
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
+
+    static let development = Self(rawValue: "Розробка")!
+    static let communication = Self(rawValue: "Спілкування")!
+    static let ai = Self(rawValue: "AI-інструменти")!
+    static let video = Self(rawValue: "Відео")!
+    static let web = Self(rawValue: "Веб")!
+    static let documents = Self(rawValue: "Документи")!
+    static let system = Self(rawValue: "Система")!
+    static let away = Self(rawValue: "Перерва")!
+    static let other = Self(rawValue: "Інше")!
+
+    static let allCases: [ActivityCategory] = [
+        .development,
+        .communication,
+        .ai,
+        .video,
+        .web,
+        .documents,
+        .system,
+        .away,
+        .other,
+    ]
 
     var id: String { rawValue }
 
@@ -37,18 +74,27 @@ enum ActivityCategory: String, Codable, CaseIterable, Identifiable {
         allCases.filter { $0 != .away }
     }
 
+    static func normalizedName(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var isBuiltIn: Bool {
+        Self.allCases.contains(self)
+    }
+
     var symbol: String {
-        switch self {
-        case .development: return "hammer"
-        case .communication: return "bubble.left.and.bubble.right"
-        case .ai: return "sparkles"
-        case .video: return "play.rectangle"
-        case .web: return "globe"
-        case .documents: return "doc.text"
-        case .system: return "gearshape"
-        case .away: return "cup.and.saucer"
-        case .other: return "square.grid.2x2"
-        }
+        if self == .development { return "hammer" }
+        if self == .communication { return "bubble.left.and.bubble.right" }
+        if self == .ai { return "sparkles" }
+        if self == .video { return "play.rectangle" }
+        if self == .web { return "globe" }
+        if self == .documents { return "doc.text" }
+        if self == .system { return "gearshape" }
+        if self == .away { return "cup.and.saucer" }
+        if self == .other { return "square.grid.2x2" }
+        return "tag"
     }
 }
 

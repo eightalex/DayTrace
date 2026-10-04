@@ -10,6 +10,7 @@ final class ActivityStore: ObservableObject {
     @Published private(set) var isVisibleInDock = true
     @Published private(set) var categoryRules: [AppCategoryRule] = []
     @Published private(set) var categoryColors: [ActivityCategory: CategoryColorValue] = [:]
+    @Published private(set) var customCategories: [ActivityCategory] = []
     @Published private(set) var recentBrowserTabs: [AppCategoryRule] = []
     @Published var selectedDate = Date()
 
@@ -25,6 +26,7 @@ final class ActivityStore: ObservableObject {
     init() {
         isVisibleInDock = UserDefaults.standard.object(forKey: "showInDock") as? Bool ?? true
         accessibilityGranted = ActivityCapture.accessibilityGranted(prompt: false)
+        customCategories = loadCustomCategories()
         categoryRules = loadCategoryRules()
         categoryColors = loadCategoryColors()
         observedDay = selectedDate
@@ -57,6 +59,10 @@ final class ActivityStore: ObservableObject {
         Dictionary(grouping: sessions.filter { !$0.isIdle }, by: \.category)
             .map { CategoryTotal(category: $0.key, duration: $0.value.reduce(0) { $0 + $1.duration }) }
             .sorted { $0.duration > $1.duration }
+    }
+
+    var assignableCategories: [ActivityCategory] {
+        ActivityCategory.assignableCases + customCategories
     }
 
     var categorizedApplications: [AppCategoryRule] {
@@ -123,6 +129,54 @@ final class ActivityStore: ObservableObject {
         guard category != .away else { return }
         categoryColors[category] = color
         saveCategoryColors()
+    }
+
+    func canAddCategory(named name: String) -> Bool {
+        let normalizedName = ActivityCategory.normalizedName(name)
+        guard !normalizedName.isEmpty else { return false }
+        return !assignableCategories.contains {
+            $0.rawValue.compare(normalizedName, options: [.caseInsensitive, .diacriticInsensitive])
+                == .orderedSame
+        } && ActivityCategory.away.rawValue.compare(
+            normalizedName,
+            options: [.caseInsensitive, .diacriticInsensitive]
+        ) != .orderedSame
+    }
+
+    @discardableResult
+    func addCategory(named name: String) -> Bool {
+        let normalizedName = ActivityCategory.normalizedName(name)
+        guard canAddCategory(named: normalizedName),
+              let category = ActivityCategory(rawValue: normalizedName) else { return false }
+
+        customCategories.append(category)
+        categoryColors[category] = nextCustomCategoryColor()
+        saveCustomCategories()
+        saveCategoryColors()
+        return true
+    }
+
+    func deleteCategory(_ category: ActivityCategory) {
+        guard customCategories.contains(category) else { return }
+
+        for index in categoryRules.indices where categoryRules[index].category == category {
+            categoryRules[index].category = .other
+        }
+        saveCategoryRules()
+
+        replaceCategory(category, with: .other, in: &trackingSessions)
+        if calendar.isDate(selectedDate, inSameDayAs: observedDay) {
+            sessions = trackingSessions
+        } else {
+            replaceCategory(category, with: .other, in: &sessions)
+        }
+        migratePersistedSessions(from: category, to: .other)
+
+        customCategories.removeAll { $0 == category }
+        categoryColors.removeValue(forKey: category)
+        saveCustomCategories()
+        saveCategoryColors()
+        refreshRecentBrowserTabs()
     }
 
     func toggleTracking() {
@@ -355,6 +409,10 @@ final class ActivityStore: ObservableObject {
         dataDirectory.appendingPathComponent("category-colors.json")
     }
 
+    private var customCategoriesURL: URL {
+        dataDirectory.appendingPathComponent("custom-categories.json")
+    }
+
     private func loadSessions(for date: Date) -> [ActivitySession] {
         let url = fileURL(for: date)
         guard let data = try? Data(contentsOf: url),
@@ -409,6 +467,33 @@ final class ActivityStore: ObservableObject {
             try data.write(to: categoryRulesURL, options: .atomic)
         } catch {
             NSLog("DayTrace could not save category rules: %@", error.localizedDescription)
+        }
+    }
+
+    private func loadCustomCategories() -> [ActivityCategory] {
+        guard let data = try? Data(contentsOf: customCategoriesURL),
+              let categories = try? JSONDecoder.dayTrace.decode(
+                  [ActivityCategory].self,
+                  from: data
+              ) else { return [] }
+
+        var seenNames = Set<String>()
+        return categories.filter { category in
+            let normalizedName = category.rawValue.folding(
+                options: [.caseInsensitive, .diacriticInsensitive],
+                locale: .current
+            )
+            return !category.isBuiltIn && seenNames.insert(normalizedName).inserted
+        }
+    }
+
+    private func saveCustomCategories() {
+        do {
+            try FileManager.default.createDirectory(at: dataDirectory, withIntermediateDirectories: true)
+            let data = try JSONEncoder.dayTrace.encode(customCategories)
+            try data.write(to: customCategoriesURL, options: .atomic)
+        } catch {
+            NSLog("DayTrace could not save custom categories: %@", error.localizedDescription)
         }
     }
 
@@ -476,6 +561,55 @@ final class ActivityStore: ObservableObject {
             try data.write(to: categoryColorsURL, options: .atomic)
         } catch {
             NSLog("DayTrace could not save category colors: %@", error.localizedDescription)
+        }
+    }
+
+    private func nextCustomCategoryColor() -> CategoryColorValue {
+        let palette = [
+            CategoryColorValue(red: 0.18, green: 0.64, blue: 0.56),
+            CategoryColorValue(red: 0.89, green: 0.45, blue: 0.18),
+            CategoryColorValue(red: 0.48, green: 0.38, blue: 0.82),
+            CategoryColorValue(red: 0.82, green: 0.33, blue: 0.52),
+            CategoryColorValue(red: 0.25, green: 0.55, blue: 0.85),
+        ]
+        return palette[customCategories.count % palette.count]
+    }
+
+    private func replaceCategory(
+        _ source: ActivityCategory,
+        with destination: ActivityCategory,
+        in target: inout [ActivitySession]
+    ) {
+        for index in target.indices where target[index].category == source {
+            target[index].category = destination
+        }
+    }
+
+    private func migratePersistedSessions(
+        from source: ActivityCategory,
+        to destination: ActivityCategory
+    ) {
+        guard let urls = try? FileManager.default.contentsOfDirectory(
+            at: dataDirectory,
+            includingPropertiesForKeys: nil
+        ) else { return }
+
+        for url in urls where url.lastPathComponent.hasPrefix("activity-")
+            && url.pathExtension == "json" {
+            guard let data = try? Data(contentsOf: url),
+                  var storedSessions = try? JSONDecoder.dayTrace.decode(
+                      [ActivitySession].self,
+                      from: data
+                  ),
+                  storedSessions.contains(where: { $0.category == source }) else { continue }
+
+            replaceCategory(source, with: destination, in: &storedSessions)
+            do {
+                let updatedData = try JSONEncoder.dayTrace.encode(storedSessions)
+                try updatedData.write(to: url, options: .atomic)
+            } catch {
+                NSLog("DayTrace could not migrate deleted category: %@", error.localizedDescription)
+            }
         }
     }
 }

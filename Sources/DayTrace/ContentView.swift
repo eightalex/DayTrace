@@ -220,7 +220,8 @@ struct ContentView: View {
                 ForEach(store.sessionsForSelectedDay) { session in
                     SessionRow(
                         session: session,
-                        color: store.timelineColor(for: session.category)
+                        color: store.timelineColor(for: session.category),
+                        categories: store.assignableCategories
                     ) { category in
                         withAnimation(.easeInOut(duration: 0.2)) {
                             store.assignCategory(category, to: session)
@@ -245,6 +246,7 @@ struct ContentView: View {
 private struct SessionRow: View {
     let session: ActivitySession
     let color: Color
+    let categories: [ActivityCategory]
     let onCategoryChange: (ActivityCategory) -> Void
 
     var body: some View {
@@ -273,7 +275,7 @@ private struct SessionRow: View {
                         Text(session.category.rawValue)
                     } else {
                         Menu {
-                            ForEach(ActivityCategory.assignableCases) { category in
+                            ForEach(categories) { category in
                                 Button {
                                     onCategoryChange(category)
                                 } label: {
@@ -329,9 +331,18 @@ private struct CategoryManagerView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                Text("\(store.categorizedApplications.count) елементів")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 12) {
+                    Text("\(store.categorizedApplications.count) елементів")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Button {
+                        viewState.newCategoryName = ""
+                        viewState.isAddingCategory = true
+                    } label: {
+                        Label("Додати категорію", systemImage: "plus")
+                    }
+                    .buttonStyle(.bordered)
+                }
             }
 
             ScrollView {
@@ -339,13 +350,16 @@ private struct CategoryManagerView: View {
                     recentTabsSection
 
                     LazyVGrid(columns: columns, alignment: .leading, spacing: 14) {
-                        ForEach(ActivityCategory.assignableCases) { category in
+                        ForEach(store.assignableCategories) { category in
                             CategoryRuleCard(
                                 category: category,
                                 rules: store.categorizedApplications(for: category),
                                 color: store.timelineColor(for: category),
                                 onColorChange: { color in
                                     store.setCategoryColor(CategoryColorValue(color: color), for: category)
+                                },
+                                onDelete: category.isBuiltIn ? nil : {
+                                    store.deleteCategory(category)
                                 }
                             ) { ruleID in
                                 store.moveCategoryRule(id: ruleID, to: category)
@@ -358,6 +372,18 @@ private struct CategoryManagerView: View {
             }
         }
         .padding(24)
+        .sheet(isPresented: $viewState.isAddingCategory) {
+            AddCategorySheet(
+                name: $viewState.newCategoryName,
+                canAdd: store.canAddCategory(named: viewState.newCategoryName)
+            ) {
+                if store.addCategory(named: viewState.newCategoryName) {
+                    viewState.isAddingCategory = false
+                }
+            } onCancel: {
+                viewState.isAddingCategory = false
+            }
+        }
     }
 
     private var recentTabsSection: some View {
@@ -440,6 +466,49 @@ private struct CategoryManagerView: View {
 private final class CategoryManagerViewState: ObservableObject {
     @Published var isShowingRecentTabs = false
     @Published var recentTabSearch = ""
+    @Published var isAddingCategory = false
+    @Published var newCategoryName = ""
+}
+
+private struct AddCategorySheet: View {
+    @Binding var name: String
+    let canAdd: Bool
+    let onAdd: () -> Void
+    let onCancel: () -> Void
+
+    @FocusState private var isNameFocused: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text("Нова категорія")
+                    .font(.title2.bold())
+                Text("Введіть унікальну назву. Колір можна змінити після створення.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            TextField("Назва категорії", text: $name)
+                .textFieldStyle(.roundedBorder)
+                .focused($isNameFocused)
+                .onSubmit {
+                    if canAdd { onAdd() }
+                }
+
+            HStack {
+                Spacer()
+                Button("Скасувати", action: onCancel)
+                    .keyboardShortcut(.cancelAction)
+                Button("Додати", action: onAdd)
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(!canAdd)
+            }
+        }
+        .padding(24)
+        .frame(width: 400)
+        .onAppear { isNameFocused = true }
+    }
 }
 
 private struct CategoryRuleCard: View {
@@ -447,6 +516,7 @@ private struct CategoryRuleCard: View {
     let rules: [AppCategoryRule]
     let color: Color
     let onColorChange: (Color) -> Void
+    let onDelete: (() -> Void)?
     let onMove: (String) -> Void
 
     @StateObject private var dropState = CategoryDropState()
@@ -474,6 +544,16 @@ private struct CategoryRuleCard: View {
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
                     .fixedSize()
+                if onDelete != nil {
+                    Button {
+                        dropState.isConfirmingDelete = true
+                    } label: {
+                        Image(systemName: "trash")
+                    }
+                    .buttonStyle(.borderless)
+                    .foregroundStyle(.secondary)
+                    .help("Видалити категорію \(category.rawValue)")
+                }
             }
 
             if rules.isEmpty {
@@ -535,6 +615,17 @@ private struct CategoryRuleCard: View {
             }
         }
         .animation(.spring(response: 0.38, dampingFraction: 0.8), value: rules)
+        .alert(
+            "Видалити категорію «\(category.rawValue)»?",
+            isPresented: $dropState.isConfirmingDelete
+        ) {
+            Button("Скасувати", role: .cancel) {}
+            Button("Видалити", role: .destructive) {
+                onDelete?()
+            }
+        } message: {
+            Text("Усі пов’язані застосунки, вкладки та записи історії буде перенесено в категорію «Інше».")
+        }
     }
 
     private var visibleRules: [AppCategoryRule] {
@@ -608,6 +699,7 @@ private final class SevenPixelColorWell: NSColorWell {
 private final class CategoryDropState: ObservableObject {
     @Published var isTargeted = false
     @Published var isShowingAllRules = false
+    @Published var isConfirmingDelete = false
 }
 
 private struct AppRulePill: View {
@@ -1026,17 +1118,16 @@ private struct TimelineTooltip: View {
 
 private extension ActivityCategory {
     var defaultTimelineColor: Color {
-        switch self {
-        case .development: return .indigo
-        case .communication: return .teal
-        case .ai: return .purple
-        case .video: return .red
-        case .web: return .blue
-        case .documents: return .orange
-        case .system: return .gray
-        case .away: return .secondary
-        case .other: return .brown
-        }
+        if self == .development { return .indigo }
+        if self == .communication { return .teal }
+        if self == .ai { return .purple }
+        if self == .video { return .red }
+        if self == .web { return .blue }
+        if self == .documents { return .orange }
+        if self == .system { return .gray }
+        if self == .away { return .secondary }
+        if self == .other { return .brown }
+        return .accentColor
     }
 }
 

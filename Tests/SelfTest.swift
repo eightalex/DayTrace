@@ -182,6 +182,23 @@ enum SelfTest {
                 == CategoryColorValue(red: 1, green: 0, blue: 0.5, opacity: 1),
             "category color components stay in the displayable range"
         )
+        let customCategory = ActivityCategory(rawValue: "  Навчання   та курси  ")
+        check(
+            customCategory?.rawValue == "Навчання та курси" && customCategory?.symbol == "tag",
+            "custom category names are normalized and receive a generic symbol"
+        )
+        let encodedCustomCategory = customCategory.flatMap {
+            try? JSONEncoder().encode($0)
+        }
+        check(
+            encodedCustomCategory.flatMap { try? JSONDecoder().decode(ActivityCategory.self, from: $0) }
+                == customCategory,
+            "custom categories preserve the legacy string JSON format"
+        )
+        check(
+            ActivityCategory(rawValue: "   ") == nil,
+            "empty category names are rejected"
+        )
 
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
