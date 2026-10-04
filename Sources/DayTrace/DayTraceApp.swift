@@ -10,7 +10,10 @@ struct DayTraceApp: App {
         }
         .defaultSize(width: 880, height: 680)
 
-        MenuBarExtra("DayTrace", systemImage: store.isTracking ? "clock.fill" : "pause.circle") {
+        MenuBarExtra(
+            "DayTrace",
+            image: store.isTracking ? "MenuBarIconTemplate" : "MenuBarIconPausedTemplate"
+        ) {
             MenuBarView(store: store)
         }
     }
