@@ -44,7 +44,7 @@ func makeIcon(paused: Bool) -> Data {
         endAngle: 380,
         clockwise: false
     )
-    ring.lineWidth = 2.1
+    ring.lineWidth = 1.785
     ring.lineCapStyle = .round
     ring.stroke()
 
@@ -53,7 +53,7 @@ func makeIcon(paused: Bool) -> Data {
             let pauseBar = NSBezierPath()
             pauseBar.move(to: NSPoint(x: x, y: 7.2))
             pauseBar.line(to: NSPoint(x: x, y: 10.8))
-            pauseBar.lineWidth = 1.5
+            pauseBar.lineWidth = 1.275
             pauseBar.lineCapStyle = .round
             pauseBar.stroke()
         }
@@ -61,7 +61,7 @@ func makeIcon(paused: Bool) -> Data {
         let hand = NSBezierPath()
         hand.move(to: NSPoint(x: 9, y: 9))
         hand.line(to: NSPoint(x: 12.1, y: 12.1))
-        hand.lineWidth = 2.1
+        hand.lineWidth = 1.785
         hand.lineCapStyle = .round
         hand.stroke()
     }
