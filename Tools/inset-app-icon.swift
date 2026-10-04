@@ -10,7 +10,7 @@ guard CommandLine.arguments.count == 3 else {
 let sourceURL = URL(fileURLWithPath: CommandLine.arguments[1])
 let outputURL = URL(fileURLWithPath: CommandLine.arguments[2])
 let canvasPixels = 1024
-let artworkPixels = 876
+let artworkPixels = 872
 let inset = CGFloat(canvasPixels - artworkPixels) / 2
 
 guard let source = NSImage(contentsOf: sourceURL),
