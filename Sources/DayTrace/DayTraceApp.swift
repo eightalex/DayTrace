@@ -4,6 +4,10 @@ import SwiftUI
 struct DayTraceApp: App {
     @StateObject private var store = ActivityStore()
 
+    init() {
+        AppIconController.shared.start()
+    }
+
     var body: some Scene {
         WindowGroup("DayTrace", id: "main") {
             ContentView(store: store)
