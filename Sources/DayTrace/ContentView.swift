@@ -371,20 +371,23 @@ private struct CategoryRuleCard: View {
                 Image(systemName: category.symbol)
                     .foregroundStyle(color)
                     .frame(width: 24, height: 24)
-                Text(category.rawValue)
-                    .font(.headline)
-                    .lineLimit(1)
-                    .layoutPriority(1)
+                HStack(spacing: 6) {
+                    Text(category.rawValue)
+                        .font(.headline)
+                        .lineLimit(1)
+                    CompactCategoryColorPicker(
+                        category: category,
+                        color: color,
+                        onChange: onColorChange
+                    )
+                    .frame(width: 14, height: 14)
+                }
+                .layoutPriority(1)
                 Spacer()
                 Text("\(rules.count)")
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
                     .fixedSize()
-                CompactCategoryColorPicker(
-                    category: category,
-                    color: color,
-                    onChange: onColorChange
-                )
             }
 
             if rules.isEmpty {
@@ -435,34 +438,46 @@ private struct CategoryRuleCard: View {
     }
 }
 
-private struct CompactCategoryColorPicker: View {
+private struct CompactCategoryColorPicker: NSViewRepresentable {
     let category: ActivityCategory
     let color: Color
     let onChange: (Color) -> Void
 
-    var body: some View {
-        ZStack {
-            Circle()
-                .fill(color)
-            Circle()
-                .strokeBorder(.primary.opacity(0.2), lineWidth: 1)
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onChange: onChange)
+    }
 
-            ColorPicker(
-                "Колір категорії \(category.rawValue)",
-                selection: Binding(
-                    get: { color },
-                    set: onChange
-                ),
-                supportsOpacity: false
-            )
-            .labelsHidden()
-            .opacity(0.02)
-            .frame(width: 18, height: 18)
-            .clipped()
+    func makeNSView(context: Context) -> NSColorWell {
+        let colorWell = NSColorWell(frame: .zero)
+        colorWell.colorWellStyle = .minimal
+        colorWell.color = NSColor(color)
+        colorWell.target = context.coordinator
+        colorWell.action = #selector(Coordinator.colorChanged(_:))
+        colorWell.toolTip = "Змінити колір категорії \(category.rawValue)"
+        colorWell.setAccessibilityLabel("Колір категорії \(category.rawValue)")
+        return colorWell
+    }
+
+    func updateNSView(_ colorWell: NSColorWell, context: Context) {
+        context.coordinator.onChange = onChange
+        let updatedColor = NSColor(color)
+        if !colorWell.color.isEqual(updatedColor) {
+            colorWell.color = updatedColor
         }
-        .frame(width: 18, height: 18)
-        .contentShape(Circle())
-        .help("Змінити колір категорії \(category.rawValue)")
+        colorWell.toolTip = "Змінити колір категорії \(category.rawValue)"
+        colorWell.setAccessibilityLabel("Колір категорії \(category.rawValue)")
+    }
+
+    final class Coordinator: NSObject {
+        var onChange: (Color) -> Void
+
+        init(onChange: @escaping (Color) -> Void) {
+            self.onChange = onChange
+        }
+
+        @objc func colorChanged(_ sender: NSColorWell) {
+            onChange(Color(nsColor: sender.color))
+        }
     }
 }
 
