@@ -77,6 +77,26 @@ enum SelfTest {
             ),
             "browser web title preference"
         )
+
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let trackedDay = Date(timeIntervalSince1970: 1_780_704_000)
+        check(
+            DaySelectionPolicy.shouldFollowRollover(
+                selectedDate: trackedDay.addingTimeInterval(60 * 60),
+                observedDate: trackedDay,
+                calendar: calendar
+            ),
+            "UI follows midnight rollover while showing the live day"
+        )
+        check(
+            !DaySelectionPolicy.shouldFollowRollover(
+                selectedDate: trackedDay.addingTimeInterval(-24 * 60 * 60),
+                observedDate: trackedDay,
+                calendar: calendar
+            ),
+            "UI preserves an explicitly selected historical day"
+        )
         print("All DayTrace self-tests passed")
     }
 

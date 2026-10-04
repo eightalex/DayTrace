@@ -119,12 +119,18 @@ final class ActivityStore: ObservableObject {
         let now = Date()
 
         if !calendar.isDate(now, inSameDayAs: observedDay) {
+            let shouldFollowNewDay = DaySelectionPolicy.shouldFollowRollover(
+                selectedDate: selectedDate,
+                observedDate: observedDay,
+                calendar: calendar
+            )
             closeCurrentSession(at: calendar.startOfDay(for: now))
             saveTrackingSessions(for: observedDay)
             observedDay = now
             trackingSessions = loadSessions(for: now)
             lastPersistedAt = nil
-            if calendar.isDate(selectedDate, inSameDayAs: now) {
+            if shouldFollowNewDay {
+                selectedDate = now
                 sessions = trackingSessions
             }
         }

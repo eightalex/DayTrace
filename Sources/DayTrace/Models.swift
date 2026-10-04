@@ -167,3 +167,13 @@ enum DurationText {
         return "< 1 хв"
     }
 }
+
+enum DaySelectionPolicy {
+    static func shouldFollowRollover(
+        selectedDate: Date,
+        observedDate: Date,
+        calendar: Calendar
+    ) -> Bool {
+        calendar.isDate(selectedDate, inSameDayAs: observedDate)
+    }
+}
