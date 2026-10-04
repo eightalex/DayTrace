@@ -1,4 +1,5 @@
 import AppKit
+import Charts
 import SwiftUI
 
 struct ContentView: View {
@@ -21,6 +22,10 @@ struct ContentView: View {
                 VStack(alignment: .leading, spacing: 18) {
                     summary
                     categoryGrid
+                    DayTimelineChart(
+                        sessions: store.sessionsForSelectedDay,
+                        date: store.selectedDate
+                    )
                     timelineHeader
                     timelineList
                 }
@@ -139,7 +144,7 @@ struct ContentView: View {
                 HStack(spacing: 10) {
                     Image(systemName: item.category.symbol)
                         .frame(width: 24)
-                        .foregroundStyle(.tint)
+                        .foregroundStyle(item.category.timelineColor)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(item.category.rawValue)
                             .font(.caption)
@@ -202,7 +207,7 @@ private struct SessionRow: View {
 
             Image(systemName: session.category.symbol)
                 .frame(width: 24, height: 24)
-                .foregroundStyle(session.isIdle ? Color.secondary : Color.accentColor)
+                .foregroundStyle(session.isIdle ? Color.secondary : session.category.timelineColor)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(session.displayTitle)
@@ -220,6 +225,97 @@ private struct SessionRow: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
+    }
+}
+
+private struct DayTimelineChart: View {
+    let sessions: [ActivitySession]
+    let date: Date
+
+    private let calendar = Calendar.autoupdatingCurrent
+    private let axisValues: [Double] = [0, 21_600, 43_200, 64_800, 86_400]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Огляд дня")
+                    .font(.subheadline.bold())
+                Spacer()
+                Text("00:00–24:00")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Chart {
+                ForEach(sessions.filter { $0.duration > 0.5 }) { session in
+                    BarMark(
+                        xStart: .value("Початок", secondsSinceStart(of: session.startedAt)),
+                        xEnd: .value("Кінець", secondsSinceStart(of: session.endedAt)),
+                        y: .value("День", "Активність")
+                    )
+                    .foregroundStyle(session.category.timelineColor)
+                    .opacity(session.isIdle ? 0.35 : 0.9)
+                    .cornerRadius(3)
+                    .accessibilityLabel(session.displayTitle)
+                    .accessibilityValue(
+                        "\(session.category.rawValue), \(DurationText.compact(session.duration))"
+                    )
+                }
+
+                if calendar.isDateInToday(date) {
+                    RuleMark(x: .value("Зараз", secondsSinceStart(of: Date())))
+                        .foregroundStyle(.primary.opacity(0.65))
+                        .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                }
+            }
+            .chartXScale(domain: 0...86_400)
+            .chartYAxis(.hidden)
+            .chartLegend(.hidden)
+            .chartXAxis {
+                AxisMarks(values: axisValues) { value in
+                    AxisGridLine()
+                        .foregroundStyle(.secondary.opacity(0.18))
+                    AxisTick()
+                    AxisValueLabel {
+                        if let seconds = value.as(Double.self) {
+                            Text(String(format: "%02d:00", Int(seconds) / 3_600))
+                                .font(.caption2)
+                        }
+                    }
+                }
+            }
+            .chartPlotStyle { plotArea in
+                plotArea
+                    .background(Color(nsColor: .textBackgroundColor).opacity(0.5))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+            }
+            .frame(height: 66)
+        }
+        .padding(.horizontal, 12)
+        .padding(.top, 10)
+        .padding(.bottom, 6)
+        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func secondsSinceStart(of value: Date) -> Double {
+        let start = calendar.startOfDay(for: date)
+        return min(86_400, max(0, value.timeIntervalSince(start)))
+    }
+}
+
+private extension ActivityCategory {
+    var timelineColor: Color {
+        switch self {
+        case .development: return .indigo
+        case .communication: return .teal
+        case .ai: return .purple
+        case .video: return .red
+        case .web: return .blue
+        case .documents: return .orange
+        case .system: return .gray
+        case .away: return .secondary
+        case .other: return .brown
+        }
     }
 }
 
