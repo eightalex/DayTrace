@@ -594,7 +594,6 @@ private struct DayTimelineChart: View {
                     .chartPlotStyle { plotArea in
                         plotArea
                             .background(Color(nsColor: .textBackgroundColor).opacity(0.5))
-                            .clipShape(RoundedRectangle(cornerRadius: 6))
                     }
                     .chartOverlay { proxy in
                         GeometryReader { geometry in
