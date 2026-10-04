@@ -33,6 +33,10 @@ enum ActivityCategory: String, Codable, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    static var assignableCases: [ActivityCategory] {
+        allCases.filter { $0 != .away }
+    }
+
     var symbol: String {
         switch self {
         case .development: return "hammer"
@@ -45,6 +49,27 @@ enum ActivityCategory: String, Codable, CaseIterable, Identifiable {
         case .away: return "cup.and.saucer"
         case .other: return "square.grid.2x2"
         }
+    }
+}
+
+struct AppCategoryRule: Codable, Identifiable, Hashable {
+    var appName: String
+    var bundleIdentifier: String?
+    var category: ActivityCategory
+
+    var id: String {
+        Self.key(appName: appName, bundleIdentifier: bundleIdentifier)
+    }
+
+    static func key(appName: String, bundleIdentifier: String?) -> String {
+        if let bundleIdentifier, !bundleIdentifier.isEmpty {
+            return "bundle:\(bundleIdentifier.lowercased())"
+        }
+        return "name:\(appName.lowercased())"
+    }
+
+    func matches(appName: String, bundleIdentifier: String?) -> Bool {
+        id == Self.key(appName: appName, bundleIdentifier: bundleIdentifier)
     }
 }
 

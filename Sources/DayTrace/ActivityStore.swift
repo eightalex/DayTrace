@@ -8,6 +8,7 @@ final class ActivityStore: ObservableObject {
     @Published private(set) var isTracking = true
     @Published private(set) var accessibilityGranted = false
     @Published private(set) var isVisibleInDock = true
+    @Published private(set) var categoryRules: [AppCategoryRule] = []
     @Published var selectedDate = Date()
 
     private let calendar = Calendar.autoupdatingCurrent
@@ -22,6 +23,7 @@ final class ActivityStore: ObservableObject {
     init() {
         isVisibleInDock = UserDefaults.standard.object(forKey: "showInDock") as? Bool ?? true
         accessibilityGranted = ActivityCapture.accessibilityGranted(prompt: false)
+        categoryRules = loadCategoryRules()
         observedDay = selectedDate
         trackingSessions = loadSessions(for: observedDay)
         sessions = trackingSessions
@@ -51,6 +53,48 @@ final class ActivityStore: ObservableObject {
         Dictionary(grouping: sessions.filter { !$0.isIdle }, by: \.category)
             .map { CategoryTotal(category: $0.key, duration: $0.value.reduce(0) { $0 + $1.duration }) }
             .sorted { $0.duration > $1.duration }
+    }
+
+    var categorizedApplications: [AppCategoryRule] {
+        var applications: [String: AppCategoryRule] = [:]
+        for session in sessions.sorted(by: { $0.startedAt < $1.startedAt }) where !session.isIdle {
+            let application = AppCategoryRule(
+                appName: session.appName,
+                bundleIdentifier: session.bundleIdentifier,
+                category: session.category
+            )
+            applications[application.id] = application
+        }
+        for rule in categoryRules {
+            applications[rule.id] = rule
+        }
+        return applications.values.sorted {
+            $0.appName.localizedCaseInsensitiveCompare($1.appName) == .orderedAscending
+        }
+    }
+
+    func categorizedApplications(for category: ActivityCategory) -> [AppCategoryRule] {
+        categorizedApplications
+            .filter { $0.category == category }
+    }
+
+    func assignCategory(_ category: ActivityCategory, to session: ActivitySession) {
+        guard !session.isIdle, category != .away else { return }
+        setCategoryRule(
+            AppCategoryRule(
+                appName: session.appName,
+                bundleIdentifier: session.bundleIdentifier,
+                category: category
+            )
+        )
+    }
+
+    func moveCategoryRule(id: String, to category: ActivityCategory) {
+        guard category != .away,
+              let rule = categorizedApplications.first(where: { $0.id == id }) else { return }
+        var movedRule = rule
+        movedRule.category = category
+        setCategoryRule(movedRule)
     }
 
     func toggleTracking() {
@@ -143,11 +187,17 @@ final class ActivityStore: ObservableObject {
             closeCurrentSession(at: lastSampleAt.map { $0.addingTimeInterval(sampleInterval) } ?? now)
         }
 
-        let category = ActivityClassifier.classify(
+        let automaticCategory = ActivityClassifier.classify(
             appName: snapshot.appName,
             bundleIdentifier: snapshot.bundleIdentifier,
             title: snapshot.windowTitle,
             isDevelopmentContext: snapshot.isDevelopmentContext,
+            isIdle: snapshot.isIdle
+        )
+        let category = assignedCategory(
+            appName: snapshot.appName,
+            bundleIdentifier: snapshot.bundleIdentifier,
+            automaticCategory: automaticCategory,
             isIdle: snapshot.isIdle
         )
 
@@ -198,6 +248,46 @@ final class ActivityStore: ObservableObject {
         lastPersistedAt = Date()
     }
 
+    private func setCategoryRule(_ rule: AppCategoryRule) {
+        if let index = categoryRules.firstIndex(where: { $0.id == rule.id }) {
+            categoryRules[index] = rule
+        } else {
+            categoryRules.append(rule)
+        }
+        categoryRules.sort { $0.appName.localizedCaseInsensitiveCompare($1.appName) == .orderedAscending }
+        saveCategoryRules()
+
+        apply(rule, to: &trackingSessions)
+        if calendar.isDate(selectedDate, inSameDayAs: observedDay) {
+            sessions = trackingSessions
+        } else {
+            apply(rule, to: &sessions)
+        }
+        saveTrackingSessions(for: observedDay)
+    }
+
+    private func apply(_ rule: AppCategoryRule, to target: inout [ActivitySession]) {
+        for index in target.indices where !target[index].isIdle
+            && rule.matches(
+                appName: target[index].appName,
+                bundleIdentifier: target[index].bundleIdentifier
+            ) {
+            target[index].category = rule.category
+        }
+    }
+
+    private func assignedCategory(
+        appName: String,
+        bundleIdentifier: String?,
+        automaticCategory: ActivityCategory,
+        isIdle: Bool
+    ) -> ActivityCategory {
+        guard !isIdle else { return .away }
+        return categoryRules.first {
+            $0.matches(appName: appName, bundleIdentifier: bundleIdentifier)
+        }?.category ?? automaticCategory
+    }
+
     private var dataDirectory: URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         return base.appendingPathComponent("DayTrace", isDirectory: true)
@@ -211,10 +301,17 @@ final class ActivityStore: ObservableObject {
         return dataDirectory.appendingPathComponent("activity-\(formatter.string(from: date)).json")
     }
 
+    private var categoryRulesURL: URL {
+        dataDirectory.appendingPathComponent("category-rules.json")
+    }
+
     private func loadSessions(for date: Date) -> [ActivitySession] {
         let url = fileURL(for: date)
         guard let data = try? Data(contentsOf: url),
-              let result = try? JSONDecoder.dayTrace.decode([ActivitySession].self, from: data) else { return [] }
+              var result = try? JSONDecoder.dayTrace.decode([ActivitySession].self, from: data) else { return [] }
+        for rule in categoryRules {
+            apply(rule, to: &result)
+        }
         return result
     }
 
@@ -225,6 +322,24 @@ final class ActivityStore: ObservableObject {
             try data.write(to: fileURL(for: date), options: .atomic)
         } catch {
             NSLog("DayTrace could not save activity: %@", error.localizedDescription)
+        }
+    }
+
+    private func loadCategoryRules() -> [AppCategoryRule] {
+        guard let data = try? Data(contentsOf: categoryRulesURL),
+              let rules = try? JSONDecoder.dayTrace.decode([AppCategoryRule].self, from: data) else {
+            return []
+        }
+        return rules
+    }
+
+    private func saveCategoryRules() {
+        do {
+            try FileManager.default.createDirectory(at: dataDirectory, withIntermediateDirectories: true)
+            let data = try JSONEncoder.dayTrace.encode(categoryRules)
+            try data.write(to: categoryRulesURL, options: .atomic)
+        } catch {
+            NSLog("DayTrace could not save category rules: %@", error.localizedDescription)
         }
     }
 }

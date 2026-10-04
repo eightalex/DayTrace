@@ -77,6 +77,18 @@ enum SelfTest {
             ),
             "browser web title preference"
         )
+        check(
+            AppCategoryRule.key(
+                appName: "ChatGPT",
+                bundleIdentifier: "com.openai.codex"
+            ) == "bundle:com.openai.codex",
+            "category rules prefer the stable bundle identifier"
+        )
+        check(
+            AppCategoryRule.key(appName: "Custom App", bundleIdentifier: nil)
+                == "name:custom app",
+            "category rules fall back to a normalized app name"
+        )
 
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
